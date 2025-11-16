@@ -74,3 +74,5 @@ WELDER_PIN = 0
 LIMIT_SWITCH_X_PIN = 1
 LIMIT_SWITCH_Y_PIN = 2
 
+# 物理的な緊急停止ボタンを接続するデジタル入力(DI)ピン
+EMERGENCY_STOP_PIN = 3

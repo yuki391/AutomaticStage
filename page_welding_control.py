@@ -136,7 +136,7 @@ class PageWeldingControl(tk.Frame):
         try:
             self.dio = ADfunc('DIO')
             if not self.dio.init("DIO000"):
-                messagebox.showerror("ハードウェアエラー", "CONTEC DIOボードの初期化に失敗しました。");
+                messagebox.showerror("ハードウェアエラー", "CONTEC DIOボードの初期化に失敗しました。CONTEC I/Oユニットが接続されてるか確認してください");
                 return
             self.motion = MotionSystem(log_callback=self.add_log)
             self.welder = WelderController(self.dio, log_callback=self.add_log)
@@ -146,6 +146,19 @@ class PageWeldingControl(tk.Frame):
             }
             self.add_log("ハードウェアの初期化が完了しました。")
             self.add_log(f"デフォルトの溶着設定「{config.DEFAULT_PRESET_NAME}」を読み込みました。")
+            try:
+                # 物理非常停止ボタン用のセンサーコントローラを初期化
+                self.emergency_button_sensor = SensorController(
+                    self.dio,
+                    config.EMERGENCY_STOP_PIN,
+                    log_callback=self.add_log
+                )
+                self.add_log(f"物理非常停止ボタン(DIピン {config.EMERGENCY_STOP_PIN}) の監視を開始します。")
+                # ポーリング処理を開始
+                self._start_emergency_button_polling()
+            except Exception as e:
+                self.add_log(f"!!! 物理非常停止ボタンの初期化に失敗: {e}")
+                messagebox.showwarning("初期化警告", f"物理非常停止ボタンの初期化に失敗しました:\n{e}")
             self.run_in_thread(self._initial_z_retract_thread)
 
         except Exception as e:
@@ -614,6 +627,54 @@ class PageWeldingControl(tk.Frame):
         finally:
             self.is_moving = False;
             self.set_jog_buttons_state('normal')
+
+    def _start_emergency_button_polling(self):
+        """物理非常停止ボタンの状態を定期的に確認するポーリングを開始する"""
+        # 100ミリ秒後に最初の確認を実行
+        self.after(100, self._check_emergency_button)
+
+    def _check_emergency_button(self):
+        """
+        物理非常停止ボタンの状態を確認し、トリガーされていたら緊急停止を実行する。
+        """
+        if not hasattr(self, 'emergency_button_sensor') or self.emergency_button_sensor is None:
+            # センサーが正常に初期化されていない場合は何もしない
+            return
+
+        try:
+            # --- ここから変更 ---
+
+            # 1. SensorControllerのis_triggered()を使わずに、
+            #    生のDIO値を直接読み取ります。
+            raw_state = self.emergency_button_sensor.dio.read(
+                channel=self.emergency_button_sensor.pin,
+                AI_DI='DI'
+            )
+
+            # 2. ★ここで緊急停止のロジックを決定します★
+            #    リミットスイッチとは無関係に、このボタンの判定だけを行います。
+
+            # (A) ボタンが押された(回路切断/High/1) 時に停止させたい場合：
+            is_triggered = bool(raw_state)
+
+            # (B) ボタンが離された(回路接続/Low/0) 時に停止させたい場合：
+            # is_triggered = not bool(raw_state)
+
+            # --- ここまで変更 ---
+
+            # 判定結果(is_triggered)がTrueの時だけ停止処理を実行
+            if is_triggered:
+                if self.stop_btn.cget('state') != 'disabled':
+                    self.add_log("!!! 物理非常停止ボタン検知！ 緊急停止を実行します。 !!!")
+                    self.on_emergency_stop()
+
+        except Exception as e:
+            # 読み取りエラーが発生してもプログラム全体は止めない
+            self.add_log(f"物理非常停止ボタンの読み取りエラー: {e}")
+
+        # ウィンドウが存在する限り、100ミリ秒後に再度このメソッドを呼び出す
+        if self.winfo_exists():
+            self.after(100, self._check_emergency_button)
 
     def stop_continuous(self, axis):
         if not self.motion: messagebox.showerror("エラー", "モーションシステムが初期化されていません。"); return

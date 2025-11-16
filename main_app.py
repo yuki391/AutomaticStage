@@ -1,5 +1,23 @@
 # main_app.py
 
+# I/O Terminal ピン配置
+# CN1
+# ピンO-PC:24V
+# ピンO-NC:GND
+# ピンo-00:溶着機11
+#
+# CN2
+# ピンI-PC:24V
+# ピンI-00:フットペダル
+# ピンI-01:X軸リミットスイッチ
+# ピンI-02:Y軸リミットスイッチ
+# ピンI-03:非常停止ボタン
+#
+# その他
+# 溶着機12:24V
+# フットペダル:GND
+# 非常停止ボタン:GND
+
 import tkinter as tk
 from page_dxf_editor import PageDxfEditor
 from page_welding_control import PageWeldingControl
