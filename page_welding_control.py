@@ -530,6 +530,7 @@ class PageWeldingControl(tk.Frame):
         except Exception as e:
             self.add_log(f"キャリブレーション適用中にエラーが発生しました: {e}")
             messagebox.showerror("適用エラー", f"キャリブレーションの適用に失敗しました:\n{e}")
+
     def move_axis(self, axis, direction):
         if not self.motion: messagebox.showerror("エラー", "モーションシステムが初期化されていません。"); return
         if self.is_moving: self.add_log("警告: 現在、別の移動命令を実行中です。"); return
