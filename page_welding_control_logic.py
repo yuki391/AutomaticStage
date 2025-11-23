@@ -226,6 +226,12 @@ class WeldingControlLogic:
             self.main.add_log("エラー: XY軸を動かすには、先に「XY原点復帰」を実行してください。")
             messagebox.showerror("エラー", "機械のXY座標が不明です。\n最初に「XY原点復帰」を実行してください。")
             return
+
+        if axis == 'z' and not self.is_z_homed:
+            # 警告ログだけ出して、モーター指令は送らずに終了
+            self.add_log("⚠️ 警告: Z軸を動かす前に「Z軸の現在地を原点に」を押してください。")
+            return
+
         try:
             step = float(self.main.step_entries[axis].get())
             amount = step * direction
@@ -311,6 +317,7 @@ class WeldingControlLogic:
             self.main.homing_button.config(state='disabled')
             self.main.z_origin_btn.config(state='disabled')
             self.main.motion.set_z_origin_here()
+            self.is_z_homed = True
             self.main.add_log("Z軸の原点設定完了。")
         finally:
             self.main.is_moving = False

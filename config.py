@@ -16,7 +16,7 @@ DXL_PROTOCOL_VERSION = 2.0
 DXL_BAUDRATE = 57600
 DEVICENAME = "COM5"
 DXL_IDS = { 'x': 1, 'y': 2, 'z': 4 }
-MOTOR_DIRECTIONS = { 'x': -1, 'y': -1, 'z': -1 ,'z*1':1 ,'z*-1':-1}
+MOTOR_DIRECTIONS = { 'x': -1, 'y': -1, 'z': 1 ,'z*1':1 ,'z*-1':-1}
 
 
 # ==========================================================================

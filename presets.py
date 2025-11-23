@@ -49,7 +49,7 @@ WELDING_PRESETS = {
         'acceleration_xy': 20,
         'weld_current': 50,
         'gentle_current': 35,
-        'weld_time': 0.5,
+        'weld_time': 1,
     },
     "ポリウレタン_強め(0.3+0.3mm)": {
         'weld_pitch': 1.8,#点の間隔

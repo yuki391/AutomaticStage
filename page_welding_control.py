@@ -21,6 +21,7 @@ class PageWeldingControl(tk.Frame):
         self.controller = controller
         self.stop_event = threading.Event()
         self.is_moving = False
+        self.is_z_homed = False
 
         # ハードウェアオブジェクトを最初にNoneで初期化する
         self.motion = None
@@ -104,17 +105,23 @@ class PageWeldingControl(tk.Frame):
         manual_frame = ttk.LabelFrame(main_frame, text="手動操作")
         manual_frame.pack(fill='x', pady=10, padx=5)
         manual_btn_frame = tk.Frame(manual_frame)
-        manual_btn_frame.pack(pady=5)
+        manual_btn_frame.pack(pady=5, anchor='w')
         self.homing_button = tk.Button(manual_btn_frame, text="XY原点復帰", command=self.run_homing_sequence)
         self.homing_button.pack(side='left', padx=10)
-        self.z_origin_btn = tk.Button(manual_btn_frame, text="Z軸の現在地を原点に",
-                                      command=self.run_set_z_origin)
-        self.z_origin_btn.pack(side='left', padx=10)
 
         self.step_entries = {}
         self.jog_buttons = []
         self.create_position_control(manual_frame, "X軸", "mm", "x")
         self.create_position_control(manual_frame, "Y軸", "mm", "y")
+
+        z_origin_frame = tk.Frame(manual_frame)
+        z_origin_frame.pack(fill='x', pady=5)  # 上下に少し余白
+
+        self.z_origin_btn = tk.Button(z_origin_frame, text="Z軸の現在地を原点に",
+                                      command=self.run_set_z_origin)
+        # 左側の余白(padx)を調整して、他のボタンと位置関係を整えると見やすくなります
+        self.z_origin_btn.pack(side='left', padx=20)
+
         self.create_z_control(manual_frame)
 
         # --- 緊急停止とログ ---
@@ -360,7 +367,7 @@ class PageWeldingControl(tk.Frame):
 
         # Z軸の現在位置を表示するラベル
         self.z_pos_var = tk.StringVar(value="原点から: --- mm")
-        z_pos_label = tk.Label(pos_frame, textvariable=self.z_pos_var, width=20, fg="blue")
+        z_pos_label = tk.Label(pos_frame, textvariable=self.z_pos_var, fg="blue")
         z_pos_label.pack(side='left', padx=15)
         # ★★★ 追加箇所ここまで ★★★
 
@@ -373,7 +380,7 @@ class PageWeldingControl(tk.Frame):
         if self.motion and hasattr(self, 'z_pos_var'):
             # 修正: is_homed のチェックを外し、常に現在の値を表示するように変更
             z_mm = self.motion.current_pos.get('z', 0.0)
-            self.z_pos_var.set(f"Z軸原点から: {z_mm:.2f} mm（上方向を正）")
+            self.z_pos_var.set(f"Z軸原点から: {-z_mm:.2f} mm（上方向を正）")
 
         # 画面が存在する限り、300ミリ秒後に自分自身を呼び出す（ループ）
         if self.winfo_exists():

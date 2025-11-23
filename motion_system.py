@@ -313,28 +313,26 @@ class MotionSystem:
         # mm をパルスに変換
         z_pulse = self._mm_to_pulses(z_mm, 'z')
 
-        # 共通メソッドを呼び出して移動（ここでリミットチェックが行われる）
-        self.move_z_abs_pulse(z_pulse)
-
-        # 現在位置(mm)を更新
-        self.current_pos['z'] = z_mm
-        self.log("Z 移動完了。")
+        # 移動を実行し、成功したか確認
+        if self.move_z_abs_pulse(z_pulse):
+            # 成功した場合のみ現在位置(mm)を更新
+            self.current_pos['z'] = z_mm
+            self.log("Z 移動完了。")
+        else:
+            # 失敗（キャンセル）した場合は更新しない
+            self.log("Z 移動はキャンセルされました。座標更新をスキップします。""Z軸の原点を設定していない可能性があります")
 
     def move_z_abs_pulse(self, z_pulse):
         # --- ソフトリミットによる制限処理 ---
-        original_pulse = z_pulse
-
-        # 最小値チェック
+        # 範囲外の場合は移動せずに False を返す
         if z_pulse < config.Z_LIMIT_MIN_PULSE:
-            z_pulse = config.Z_LIMIT_MIN_PULSE
-            self.log(
-                f"⚠️ 警告: Z指令値({original_pulse})が下限を超えています。{config.Z_LIMIT_MIN_PULSE} に制限しました。")
+            self.log(f"⚠️ 警告: Z指令値({z_pulse})が下限({config.Z_LIMIT_MIN_PULSE})未満です。移動をキャンセルしました。")
+            return False
 
-        # 最大値チェック
         elif z_pulse > config.Z_LIMIT_MAX_PULSE:
-            z_pulse = config.Z_LIMIT_MAX_PULSE
-            self.log(
-                f"⚠️ 警告: Z指令値({original_pulse})が上限を超えています。{config.Z_LIMIT_MAX_PULSE} に制限しました。")
+            self.log(f"⚠️ 警告: Z指令値({z_pulse})が上限({config.Z_LIMIT_MAX_PULSE})超過です。移動をキャンセルしました。")
+            return False
+        # ------------------------------------
 
         self.log(f"Z -> 絶対パルス位置 {z_pulse} へ移動...")
         z_id = config.DXL_IDS['z']
@@ -343,10 +341,10 @@ class MotionSystem:
         self.dxl.set_operating_mode(z_id, 3)  # 位置制御モード
         self.dxl.set_profile(z_id, config.PROFILE_VELOCITY_Z, config.PROFILE_ACCELERATION_Z)
 
-        # 2. 目標位置を書き込み（制限済みの値を使用）
+        # 2. 目標位置を書き込み
         self.dxl.set_goal_position(z_id, z_pulse)
 
-        # --- 移動完了待ち処理 (既存コードのまま) ---
+        # --- 移動完了待ち処理 ---
         self.log(f"  (移動待機中... 目標: {z_pulse})")
         POSITION_THRESHOLD = 10
         timeout_sec = 5.0
@@ -373,6 +371,8 @@ class MotionSystem:
             self.log(f"Z軸 パルス移動完了。 最終位置: {final_pulse}")
         else:
             self.log("Z軸 パルス移動完了。（最終位置の読み取りに失敗しました）")
+
+        return True  # 移動成功
 
     def move_xy_rel(self, dx_mm=0, dy_mm=0, preset=None):
         if preset is None:
