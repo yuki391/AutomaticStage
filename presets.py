@@ -18,8 +18,8 @@
 WELDING_PRESETS = {
     "下記から選択": {#この名前は変えないで．config.pyでこの名前使ってる
         'weld_pitch': 2.0,#点の間隔
-        'velocity_xy': 150,
-        'acceleration_xy':15,
+        'velocity_xy': 0,
+        'acceleration_xy':0,
         'weld_current': 30,#押し付け力
         'gentle_current': 30,
         'weld_time': 2,#秒数
@@ -62,7 +62,7 @@ WELDING_PRESETS = {
     },
     "ポリウレタン(0.3+0.3mm)": {
         'weld_pitch': 2.0,#点の間隔
-        'velocity_xy': 15,
+        'velocity_xy': 300,
         'acceleration_xy':15,
         'weld_current': 50,#押し付け力
         'gentle_current': 200,
