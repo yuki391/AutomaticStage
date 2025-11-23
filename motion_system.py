@@ -310,18 +310,32 @@ class MotionSystem:
 
     def move_z_abs(self, z_mm):
         self.log(f"Z -> {z_mm:.2f}mm")
-        z_id = config.DXL_IDS['z']
-        self.dxl.set_operating_mode(z_id, 3)
+        # mm をパルスに変換
         z_pulse = self._mm_to_pulses(z_mm, 'z')
-        self.dxl.set_goal_position(z_id, z_pulse)
-        while self.dxl.is_moving(z_id):
-            time.sleep(0.05)
+
+        # 共通メソッドを呼び出して移動（ここでリミットチェックが行われる）
+        self.move_z_abs_pulse(z_pulse)
+
+        # 現在位置(mm)を更新
         self.current_pos['z'] = z_mm
         self.log("Z 移動完了。")
 
-        # motion_system.py の def move_z_abs_pulse を下記に置き換えてください
-
     def move_z_abs_pulse(self, z_pulse):
+        # --- ソフトリミットによる制限処理 ---
+        original_pulse = z_pulse
+
+        # 最小値チェック
+        if z_pulse < config.Z_LIMIT_MIN_PULSE:
+            z_pulse = config.Z_LIMIT_MIN_PULSE
+            self.log(
+                f"⚠️ 警告: Z指令値({original_pulse})が下限を超えています。{config.Z_LIMIT_MIN_PULSE} に制限しました。")
+
+        # 最大値チェック
+        elif z_pulse > config.Z_LIMIT_MAX_PULSE:
+            z_pulse = config.Z_LIMIT_MAX_PULSE
+            self.log(
+                f"⚠️ 警告: Z指令値({original_pulse})が上限を超えています。{config.Z_LIMIT_MAX_PULSE} に制限しました。")
+
         self.log(f"Z -> 絶対パルス位置 {z_pulse} へ移動...")
         z_id = config.DXL_IDS['z']
 
@@ -329,54 +343,36 @@ class MotionSystem:
         self.dxl.set_operating_mode(z_id, 3)  # 位置制御モード
         self.dxl.set_profile(z_id, config.PROFILE_VELOCITY_Z, config.PROFILE_ACCELERATION_Z)
 
-        # 2. 目標位置を書き込み
+        # 2. 目標位置を書き込み（制限済みの値を使用）
         self.dxl.set_goal_position(z_id, z_pulse)
 
-        # --- 変更点: is_moving(122) の代わりに現在位置(132)を監視 ---
-
+        # --- 移動完了待ち処理 (既存コードのまま) ---
         self.log(f"  (移動待機中... 目標: {z_pulse})")
-
-        # 許容誤差（パルス単位、この値以内に入れば完了とみなす）
         POSITION_THRESHOLD = 10
-
-        # タイムアウト設定（秒）
-        timeout_sec = 5.0  # 5秒以内に移動完了しない場合は警告して抜ける
+        timeout_sec = 5.0
         start_time = time.time()
 
         while True:
-            # 1. 現在位置の読み取り
             current_pulse = self.dxl.read_present_position(z_id)
-
             if current_pulse == -1:
                 self.log("  (警告: 現在位置の読み取りに失敗。待機を中断)")
-                break  # 読み取り失敗
+                break
 
-            # 2. 目標位置と現在位置の差分を計算
             diff = abs(z_pulse - current_pulse)
-
-            # 3. 完了判定 (差分がしきい値以下か？)
             if diff <= POSITION_THRESHOLD:
                 self.log(f"  (目標位置に到達。 現在: {current_pulse})")
-                break  # 目標位置に到達
+                break
 
-            # 4. タイムアウト判定
             if (time.time() - start_time) > timeout_sec:
                 self.log(f"  (警告: Z軸移動がタイムアウトしました。 現在: {current_pulse})")
                 break
-
-            # 5. 待機 (ポーリング間隔)
             time.sleep(0.05)
 
-        # --- ログ出力（前回修正した箇所） ---
-        # 最終的な現在位置を（再度）取得してログに出力
         final_pulse = self.dxl.read_present_position(z_id)
-
         if final_pulse != -1:
             self.log(f"Z軸 パルス移動完了。 最終位置: {final_pulse}")
         else:
             self.log("Z軸 パルス移動完了。（最終位置の読み取りに失敗しました）")
-        # --- 変更ここまで ---
-
 
     def move_xy_rel(self, dx_mm=0, dy_mm=0, preset=None):
         if preset is None:

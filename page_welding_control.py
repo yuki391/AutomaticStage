@@ -28,6 +28,9 @@ class PageWeldingControl(tk.Frame):
         self.sensors = None
         self.dio = None
 
+        # ★★★ 追加: UI更新ループの開始 ★★★
+        self._start_ui_update_loop()
+
         # プリセットファイルにデフォルト名が存在するか確認
         if hasattr(config, 'DEFAULT_PRESET_NAME') and config.DEFAULT_PRESET_NAME in presets.WELDING_PRESETS:
             self.active_preset = presets.WELDING_PRESETS[config.DEFAULT_PRESET_NAME].copy()
@@ -354,6 +357,27 @@ class PageWeldingControl(tk.Frame):
         stop_btn = tk.Button(cur_frame, text="停止", bg="yellow", command=lambda: self.stop_continuous(axis))
         stop_btn.pack(side='left', padx=5);
         self.jog_buttons.append(stop_btn)
+
+        # Z軸の現在位置を表示するラベル
+        self.z_pos_var = tk.StringVar(value="原点から: --- mm")
+        z_pos_label = tk.Label(pos_frame, textvariable=self.z_pos_var, width=20, fg="blue")
+        z_pos_label.pack(side='left', padx=15)
+        # ★★★ 追加箇所ここまで ★★★
+
+        # --- 追加: パルス位置直接入力（絶対移動） ---
+        pulse_frame = tk.Frame(frame)
+
+    def _start_ui_update_loop(self):
+        """Z軸の現在位置表示を定期的に更新する"""
+        # motionシステムがあり、かつ表示用変数が作成済みか確認
+        if self.motion and hasattr(self, 'z_pos_var'):
+            # 修正: is_homed のチェックを外し、常に現在の値を表示するように変更
+            z_mm = self.motion.current_pos.get('z', 0.0)
+            self.z_pos_var.set(f"Z軸原点から: {z_mm:.2f} mm（上方向を正）")
+
+        # 画面が存在する限り、300ミリ秒後に自分自身を呼び出す（ループ）
+        if self.winfo_exists():
+            self.after(300, self._start_ui_update_loop)
 
     def run_set_z_pulse(self):
         """UIから呼ばれる：エントリのパルス値へ移動（スレッドで実行）"""

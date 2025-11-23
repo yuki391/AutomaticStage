@@ -35,14 +35,19 @@ PULSES_PER_MM_Z = 1024.0
 DEFAULT_PRESET_NAME = "下記から選択"
 
 # Z軸の速度・加速度
-PROFILE_VELOCITY_Z = 0
+PROFILE_VELOCITY_Z = 10
+#10だとゆっくり
 PROFILE_ACCELERATION_Z = 0
+#100ぐらいがちょうどよい．そのときの速度は1000ぐらいかな
+#0だとmaxの値になる
 
 # 安全な高さ (パルス位置)
 SAFE_Z_PULSE = 2100
 # 全ての工程が完了した後の、最終的なZ軸の退避高さ
-FINAL_RETRACT_PULSE = 4000
-
+FINAL_RETRACT_PULSE = 1100
+# モーターが移動できる範囲の最小値と最大値（パルス）を設定
+Z_LIMIT_MAX_PULSE = 2337 #Ｚ軸が一番下の時のパルス値
+Z_LIMIT_MIN_PULSE = 1121 #Ｚ軸が一番上の時のパルス値
 
 # ==========================================================================
 # 原点復帰パラメータ
