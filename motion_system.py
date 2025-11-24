@@ -56,6 +56,10 @@ class MotionSystem:
         self.homing_backoff_mm = getattr(config, 'HOMING_BACKOFF_MM', 20)
         self._backoff_timeout = getattr(config, 'HOMING_BACKOFF_TIMEOUT', 5.0)
 
+        self.homing_approach_accel = getattr(config, 'HOMING_APPROACH_ACCELERATION', 20)  # 初回用
+        self.homing_backoff_accel = getattr(config, 'HOMING_BACKOFF_ACCELERATION', 10)  # バックオフ用
+        self.homing_slow_accel = getattr(config, 'HOMING_SLOW_ACCELERATION', 5)
+
         if not self.dxl.connect(config.DEVICENAME):
             raise ConnectionError("Dynamixelへの接続に失敗しました。")
         self._setup_motors()
@@ -126,6 +130,7 @@ class MotionSystem:
         # --- 初回アプローチ（元の速度制御） ---
         self.log(f"{axis.upper()}軸 原点探索 (高速)... (homing_sign={homing_sign}, fast_speed={fast_speed})")
         self.dxl.set_operating_mode(dxl_id, 1)  # 速度制御モード
+        self.dxl.set_profile(dxl_id, 0, int(self.homing_approach_accel))
         self.dxl.set_goal_velocity(dxl_id, fast_speed)
         while not sensor.is_triggered():
             time.sleep(0.005)
@@ -155,7 +160,7 @@ class MotionSystem:
 
             # 切替：速度制御モード（既に1だが明示）
             self.dxl.set_operating_mode(dxl_id, 1)
-            # set velocity to start moving away
+            self.dxl.set_profile(dxl_id, 0, int(self.homing_backoff_accel))
             self.dxl.set_goal_velocity(dxl_id, velocity_value)
 
             # 監視：所要パルスだけ移動したら停止
@@ -192,6 +197,7 @@ class MotionSystem:
         # --- 低速で再接近（元の実装） ---
         self.log(f"{axis.upper()}軸 原点確定 (低速)...")
         self.dxl.set_operating_mode(dxl_id, 1)
+        self.dxl.set_profile(dxl_id, 0, int(self.homing_slow_accel))
         self.dxl.set_goal_velocity(dxl_id, slow_speed)
         while not sensor.is_triggered():
             time.sleep(0.005)

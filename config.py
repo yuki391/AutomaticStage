@@ -52,18 +52,26 @@ Z_LIMIT_MIN_PULSE = 1121 #Ｚ軸が一番上の時のパルス値
 # ==========================================================================
 # 原点復帰パラメータ
 # ==========================================================================
+# 速度は0~330まで
+# 加速度は100が良い．速くしたいなら150で，ゆっくりしたいなら50
 HOMING_VELOCITY_SIGN = { 'x': 1, 'y': 1 }
 # センサーに高速で接近する際の速度
-HOMING_SPEED_FAST = 150
-# センサーに低速で再接触する際の速度
-HOMING_SPEED_SLOW = 20
+HOMING_SPEED_FAST = 330
+# 初回アプローチ（高速移動）時の加速度
+HOMING_APPROACH_ACCELERATION = 150
+
+# バックオフ速度設定
+HOMING_BACKOFF_SPEED = 330
+HOMING_BACKOFF_TIMEOUT = 5.0
+# バックオフ時の加速度
+HOMING_BACKOFF_ACCELERATION = 100
 # センサーから離れる距離 (mm)
 HOMING_BACKOFF_MM = 10
 
-# ★★★ バックオフ（センサーから離れる動き）専用の設定 ★★★
-HOMING_BACKOFF_SPEED = 30
-HOMING_BACKOFF_ACCELERATION = 5 # ★★★ この行を追加してエラーを修正 ★★★
-HOMING_BACKOFF_TIMEOUT = 5.0  # バックオフのタイムアウト（秒）
+# センサーに低速で再接触する際の速度
+HOMING_SPEED_SLOW = 30
+# 低速接近（原点確定）時の加速度
+HOMING_SLOW_ACCELERATION = 50
 
 # ==========================================================================
 # 経路計算パラメータ (プリセットに移行しないもの)

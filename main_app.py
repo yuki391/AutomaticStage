@@ -18,6 +18,11 @@
 # フットペダル:GND
 # 非常停止ボタン:GND
 
+# トラブルシューティング
+# 加速度がおかしい時はDYNAMIXEL Wizard 2.0 等でモーターの Drive Mode (Address 10) を確認し、Time-based Profileになっていないか確認。
+# 通常動作に戻すには，選択解除して０にする。
+
+
 import tkinter as tk
 from page_dxf_editor import PageDxfEditor
 from page_welding_control import PageWeldingControl
