@@ -21,6 +21,7 @@ class WeldingControlLogic:
         # 状態フラグは main のものを優先して使う
         if not hasattr(self.main, 'is_moving'):
             self.main.is_moving = False
+        self.is_z_homed = False
 
     # --- スレッドユーティリティ ---
     def run_in_thread(self, target, *args):
@@ -229,7 +230,7 @@ class WeldingControlLogic:
 
         if axis == 'z' and not self.is_z_homed:
             # 警告ログだけ出して、モーター指令は送らずに終了
-            self.add_log("⚠️ 警告: Z軸を動かす前に「Z軸の現在地を原点に」を押してください。")
+            self.main.add_log("⚠️ 警告: Z軸を動かす前に「Z軸の現在地を原点に」を押してください。")
             return
 
         try:
@@ -243,8 +244,16 @@ class WeldingControlLogic:
         try:
             self.main.is_moving = True
             self._set_jog_buttons_enabled(False)
-            self.main.homing_button.config(state='disabled')
-            self.main.z_origin_btn.config(state='disabled')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='disabled')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='disabled')
+                except:
+                    pass
             self.main.add_log(f"手動操作: {axis.upper()}軸を {amount:+.2f}mm 動かします...")
             if axis == 'x':
                 self.main.motion.move_xy_rel(dx_mm=amount, dy_mm=0, preset=self.main.active_preset)
@@ -256,8 +265,16 @@ class WeldingControlLogic:
         finally:
             self.main.is_moving = False
             self._set_jog_buttons_enabled(True)
-            self.main.homing_button.config(state='normal')
-            self.main.z_origin_btn.config(state='normal')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='normal')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='normal')
+                except:
+                    pass
 
     def _set_jog_buttons_enabled(self, enabled):
         state = 'normal' if enabled else 'disabled'
@@ -281,21 +298,39 @@ class WeldingControlLogic:
     def _homing_thread(self):
         try:
             self.main.is_moving = True
-            self.main.homing_button.config(state='disabled')
-            self.main.z_origin_btn.config(state='disabled')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='disabled')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='disabled')
+                except:
+                    pass
             self._set_jog_buttons_enabled(False)
 
             self.main.add_log("--- 原点復帰の前にZ軸を安全な高さへ移動します ---")
-            self.main.motion.move_z_abs_pulse(self.main.main_config_SAFE_Z_PULSE if hasattr(self.main, 'main_config_SAFE_Z_PULSE') else 2100)
+            self.main.motion.move_z_abs_pulse(
+                self.main.main_config_SAFE_Z_PULSE if hasattr(self.main, 'main_config_SAFE_Z_PULSE') else 2100)
             self.main.motion.home_all_axes(self.main.sensors)
 
             if self.main.motion.is_homed:
                 self._set_jog_buttons_enabled(True)
+                self.is_z_homed = True
                 self.main.add_log("原点復帰が完了しました。手動操作が可能です。")
         finally:
             self.main.is_moving = False
-            self.main.homing_button.config(state='normal')
-            self.main.z_origin_btn.config(state='normal')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='normal')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='normal')
+                except:
+                    pass
             if getattr(self.main, 'motion', None) and self.main.motion.is_homed:
                 self._set_jog_buttons_enabled(True)
 
@@ -314,16 +349,84 @@ class WeldingControlLogic:
         try:
             self.main.is_moving = True
             self._set_jog_buttons_enabled(False)
-            self.main.homing_button.config(state='disabled')
-            self.main.z_origin_btn.config(state='disabled')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='disabled')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='disabled')
+                except:
+                    pass
             self.main.motion.set_z_origin_here()
             self.is_z_homed = True
             self.main.add_log("Z軸の原点設定完了。")
         finally:
             self.main.is_moving = False
-            self.main.homing_button.config(state='normal')
-            self.main.z_origin_btn.config(state='normal')
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='normal')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='normal')
+                except:
+                    pass
             self._set_jog_buttons_enabled(True)
+
+    # --- Z軸 パルス指定移動 ---
+    def run_set_z_pulse(self):
+        if not getattr(self.main, 'motion', None):
+            messagebox.showerror("エラー", "モーションシステムが初期化されていません。")
+            return
+        try:
+            # UIのエントリから値を取得
+            pulse_str = self.main.step_entries.get('z_pulse').get()
+            pulse = int(float(pulse_str))
+        except Exception:
+            messagebox.showerror("入力エラー", "パルス位置には整数を入力してください。")
+            return
+
+        if not messagebox.askyesno("確認", f"Z軸を絶対パルス位置 {pulse} に移動しますか？"):
+            return
+
+        self.run_in_thread(self._set_z_pulse_thread, pulse)
+
+    def _set_z_pulse_thread(self, pulse):
+        try:
+            self.main.is_moving = True
+            self._set_jog_buttons_enabled(False)
+            # ボタン無効化（存在確認付き）
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='disabled')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='disabled')
+                except:
+                    pass
+
+            self.main.add_log(f"Z軸を絶対パルス位置 {pulse} へ移動します...")
+            self.main.motion.move_z_abs_pulse(pulse)
+            self.main.add_log("移動完了。")
+        finally:
+            self.main.is_moving = False
+            self._set_jog_buttons_enabled(True)
+            # ボタン復帰
+            if hasattr(self.main, 'homing_button'):
+                try:
+                    self.main.homing_button.config(state='normal')
+                except:
+                    pass
+            if hasattr(self.main, 'z_origin_btn'):
+                try:
+                    self.main.z_origin_btn.config(state='normal')
+                except:
+                    pass
 
     # --- 電流指定で移動 ---
     def set_current_only_move(self, axis, direction):
@@ -386,8 +489,8 @@ class WeldingControlLogic:
         if hasattr(self.main, 'stop_btn'):
             self.main.stop_btn.config(state='disabled')
         messagebox.showwarning("緊急停止",
-                               "全モーターのトルクがOFFになり、溶着機が停止しました。\n機械を手で安全な範囲に移動させた後、「復帰"+
-                               ""+"」ボタンを押してください。")
+                               "全モーターのトルクがOFFになり、溶着機が停止しました。\n機械を手で安全な範囲に移動させた後、「復帰" +
+                               "" + "」ボタンを押してください。")
 
     def on_recovery(self):
         if hasattr(self.main, 'recover_btn'):

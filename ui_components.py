@@ -69,13 +69,13 @@ def create_manual_control_widgets(parent_frame, page):
     btn_frame.pack(pady=5)
     page.homing_button = tk.Button(btn_frame, text="XY原点復帰", command=page.run_homing_sequence)
     page.homing_button.pack(side='left', padx=10)
-    page.z_rot_origin_btn = tk.Button(btn_frame, text="Z/回転軸の現在地を原点に", command=page.run_set_z_rot_origin)
-    page.z_rot_origin_btn.pack(side='left', padx=10)
+    page.z_origin_btn = tk.Button(btn_frame, text="Z軸の現在地を原点に", command=page.run_set_z_rot_origin)
+    page.z_origin_btn.pack(side='left', padx=10)
 
     page.create_position_control(frame, "X軸", "mm", "x")
     page.create_position_control(frame, "Y軸", "mm", "y")
     page.create_advanced_control(frame, "Z軸", "mm", "z")
-    page.create_advanced_control(frame, "回転軸", "度", "rot")
+
 
 
 def create_emergency_stop_widgets(parent_frame, page):

@@ -39,8 +39,8 @@ class PageDxfEditor(tk.Frame):
         self.file_label.pack(side='left', fill='x', expand=True)
 
         # 溶着制御ページへのボタン
-        self.goto_weld_btn = tk.Button(top_frame, text="溶着制御ページへ >>", command=self.go_to_welding_page)
-        self.goto_weld_btn.pack(side='right', padx=10)
+        self.goto_preview_btn = tk.Button(top_frame, text="次へ: 溶着点プレビュー >>",command=self.go_to_preview, bg="lightblue")
+        self.goto_preview_btn.pack(side='right', padx=10)
         self.save_btn = tk.Button(top_frame, text="編集結果をCSV保存", command=self.save_weld_points, state='disabled')
         self.save_btn.pack(side='right', padx=6)
 
@@ -232,3 +232,17 @@ class PageDxfEditor(tk.Frame):
             canvas.mpl_connect('button_release_event', on_button_release),
         ]
 
+    def go_to_preview(self):
+        """編集完了、データを保存してプレビュー画面へ"""
+        if self.current_fig and hasattr(self.current_fig, '_weld_data'):
+            # 1. 溶着点データを共有メモリに保存
+            self.controller.shared_data['weld_points'] = self.current_fig._weld_data
+            print(f"データ保存: {len(self.current_fig._weld_data)} 点")
+
+            # 2. 選択中のプリセット名も保存
+            self.controller.shared_data['preset_name'] = self.preset_var.get()
+
+            # 3. 次のページへ移動
+            self.controller.show_page("PagePathPreview")
+        else:
+            messagebox.showwarning("警告", "経路データが生成されていません。\nDXFを読み込んで経路生成を行ってください。")
