@@ -39,10 +39,14 @@ class PageDxfEditor(tk.Frame):
         self.file_label.pack(side='left', fill='x', expand=True)
 
         # 溶着制御ページへのボタン
-        self.goto_preview_btn = tk.Button(top_frame, text="次へ: 溶着点プレビュー >>",command=self.go_to_preview, bg="lightblue")
+        self.goto_preview_btn = tk.Button(top_frame, text="次へ: 経路確認・実行 >>",command=self.go_to_preview, bg="lightblue")
         self.goto_preview_btn.pack(side='right', padx=10)
         self.save_btn = tk.Button(top_frame, text="編集結果をCSV保存", command=self.save_weld_points, state='disabled')
         self.save_btn.pack(side='right', padx=6)
+
+        # ★追加: 前のページに戻るボタン
+        self.back_btn = tk.Button(top_frame, text="<< 戻る", command=lambda: controller.show_page("PageManualControl"))
+        self.back_btn.pack(side='right', padx=6)
 
         # --- 設定フレーム ---
         settings_frame = tk.Frame(self)
@@ -243,6 +247,6 @@ class PageDxfEditor(tk.Frame):
             self.controller.shared_data['preset_name'] = self.preset_var.get()
 
             # 3. 次のページへ移動
-            self.controller.show_page("PagePathPreview")
+            self.controller.show_page("PageMergedPreviewExecution")
         else:
             messagebox.showwarning("警告", "経路データが生成されていません。\nDXFを読み込んで経路生成を行ってください。")
