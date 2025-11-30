@@ -1,5 +1,3 @@
-# page_dxf_editor.py
-
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
@@ -9,10 +7,10 @@ import datetime
 import matplotlib
 
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 import config
-import presets  # プリセットファイルをインポート
+import presets
 from dxf_parser import get_all_entities_as_segments, find_connected_path
 from path_generator import generate_path_as_points
 from plot_builder import create_plot_figure
@@ -28,31 +26,33 @@ class PageDxfEditor(tk.Frame):
         self._active_canvas = None
         self._mpl_cids = []
 
+        self.toolbar = None
+
         # --- 上部フレーム ---
         top_frame = tk.Frame(self, pady=10)
         top_frame.pack(fill='x')
 
-        # ファイル選択
+        self.back_btn = tk.Button(top_frame, text="<< 戻る",
+                                  command=lambda: controller.show_page("PageManualControl"))
+        self.back_btn.pack(side='left', padx=8)
+
         self.select_btn = tk.Button(top_frame, text="DXFファイルを選択", command=self.select_file)
         self.select_btn.pack(side='left', padx=8)
+
         self.file_label = tk.Label(top_frame, text="ファイルが選択されていません", anchor='w')
         self.file_label.pack(side='left', fill='x', expand=True)
 
-        # 溶着制御ページへのボタン
-        self.goto_preview_btn = tk.Button(top_frame, text="次へ: 経路確認・実行 >>",command=self.go_to_preview, bg="lightblue")
+        self.goto_preview_btn = tk.Button(top_frame, text="次へ: 経路確認・実行 >>",
+                                          command=self.go_to_preview, bg="lightblue")
         self.goto_preview_btn.pack(side='right', padx=10)
+
         self.save_btn = tk.Button(top_frame, text="編集結果をCSV保存", command=self.save_weld_points, state='disabled')
         self.save_btn.pack(side='right', padx=6)
-
-        # ★追加: 前のページに戻るボタン
-        self.back_btn = tk.Button(top_frame, text="<< 戻る", command=lambda: controller.show_page("PageManualControl"))
-        self.back_btn.pack(side='right', padx=6)
 
         # --- 設定フレーム ---
         settings_frame = tk.Frame(self)
         settings_frame.pack(fill='x', padx=5)
 
-        # プリセット選択UI
         preset_frame = ttk.LabelFrame(settings_frame, text="① 材質・設定プリセットを選択")
         preset_frame.pack(side='left', fill='x', pady=5, padx=5, expand=True)
 
@@ -63,17 +63,14 @@ class PageDxfEditor(tk.Frame):
         preset_names = list(presets.WELDING_PRESETS.keys())
         preset_combo['values'] = preset_names
 
-        # configにデフォルト名が存在するか確認
         if hasattr(config, 'DEFAULT_PRESET_NAME') and config.DEFAULT_PRESET_NAME in preset_names:
             self.preset_var.set(config.DEFAULT_PRESET_NAME)
         else:
-            self.preset_var.set(preset_names[0])  # 存在しない場合は最初のものを選択
+            self.preset_var.set(preset_names[0])
 
-        # 共有データに初期値を設定
         self.controller.shared_data['preset_name'] = self.preset_var.get()
         preset_combo.bind('<<ComboboxSelected>>', self.on_preset_selected)
 
-        # 経路生成ボタン
         self.run_btn = tk.Button(settings_frame, text="② DXFから経路生成", command=self.run_process, state='disabled',
                                  height=2)
         self.run_btn.pack(side='left', padx=10, pady=10)
@@ -84,7 +81,6 @@ class PageDxfEditor(tk.Frame):
         self.canvas_widget = None
 
     def on_preset_selected(self, event=None):
-        """プリセットが選択されたら、共有データに名前を保存する"""
         self.controller.shared_data['preset_name'] = self.preset_var.get()
         print(f"プリセット「{self.preset_var.get()}」が選択されました。")
 
@@ -112,7 +108,6 @@ class PageDxfEditor(tk.Frame):
                 messagebox.showwarning("解析エラー", "図形を連続した輪郭として再構築できませんでした。");
                 return
 
-            # 選択されているプリセットを取得して経路生成関数に渡す
             selected_preset_name = self.controller.shared_data['preset_name']
             active_preset = presets.WELDING_PRESETS[selected_preset_name]
             path_data = generate_path_as_points(vertices, is_closed, active_preset)
@@ -142,6 +137,11 @@ class PageDxfEditor(tk.Frame):
                     self._active_canvas.mpl_disconnect(cid)
                 except:
                     pass
+
+        if self.toolbar:
+            self.toolbar.destroy()
+            self.toolbar = None
+
         if self.canvas_widget: self.canvas_widget.destroy()
         self.canvas_widget = None;
         self._active_canvas = None;
@@ -149,11 +149,18 @@ class PageDxfEditor(tk.Frame):
         self.current_fig = None
         self.save_btn.config(state='disabled')
 
-    def go_to_welding_page(self):
+    def go_to_preview(self):
         if self.current_fig and hasattr(self.current_fig, '_weld_data'):
             self.controller.shared_data['weld_points'] = self.current_fig._weld_data
-        # プリセット名はすでに共有データにあるので、そのままページを切り替える
-        self.controller.show_page("PageWeldingControl")
+
+            # 「まだシフトしていない」ことを示すフラグを設定
+            self.controller.shared_data['is_shifted'] = False
+
+            print(f"データ保存: {len(self.current_fig._weld_data)} 点")
+            self.controller.shared_data['preset_name'] = self.preset_var.get()
+            self.controller.show_page("PageMergedPreviewExecution")
+        else:
+            messagebox.showwarning("警告", "経路データが生成されていません。\nDXFを読み込んで経路生成を行ってください。")
 
     def save_weld_points(self):
         if not self.current_fig or not hasattr(self.current_fig, '_weld_data'):
@@ -175,8 +182,18 @@ class PageDxfEditor(tk.Frame):
 
     def display_plot(self, fig):
         canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        self.canvas_widget = canvas.get_tk_widget();
+        self.canvas_widget = canvas.get_tk_widget()
+
+        # ツールバー作成
+        self.toolbar = NavigationToolbar2Tk(canvas, self.plot_frame)
+        self.toolbar.update()
+
+        # ★変更: ツールバーを上部(TOP)に配置しなおす
+        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        # キャンバスをその下に配置
         self.canvas_widget.pack(fill='both', expand=True)
+
         canvas.draw();
         self._active_canvas = canvas;
         ax = fig.axes[0]
@@ -200,6 +217,9 @@ class PageDxfEditor(tk.Frame):
             fig._timestamp = datetime.datetime.now()
 
         def on_button_press(event):
+            # ツールバー使用中は編集無効
+            if self.toolbar.mode != "": return
+
             if event.inaxes != ax: return
             idx = find_nearest_index(event)
             if event.button == 1:
@@ -221,6 +241,7 @@ class PageDxfEditor(tk.Frame):
                     update_scatter_positions()
 
         def on_motion(event):
+            if self.toolbar.mode != "": return
             if not state['dragging'] or state['selected_index'] is None or event.inaxes != ax: return
             idx = state['selected_index']
             weld_data[idx]['x'] = event.xdata + state['drag_offset'][0]
@@ -235,18 +256,3 @@ class PageDxfEditor(tk.Frame):
             canvas.mpl_connect('motion_notify_event', on_motion),
             canvas.mpl_connect('button_release_event', on_button_release),
         ]
-
-    def go_to_preview(self):
-        """編集完了、データを保存してプレビュー画面へ"""
-        if self.current_fig and hasattr(self.current_fig, '_weld_data'):
-            # 1. 溶着点データを共有メモリに保存
-            self.controller.shared_data['weld_points'] = self.current_fig._weld_data
-            print(f"データ保存: {len(self.current_fig._weld_data)} 点")
-
-            # 2. 選択中のプリセット名も保存
-            self.controller.shared_data['preset_name'] = self.preset_var.get()
-
-            # 3. 次のページへ移動
-            self.controller.show_page("PageMergedPreviewExecution")
-        else:
-            messagebox.showwarning("警告", "経路データが生成されていません。\nDXFを読み込んで経路生成を行ってください。")

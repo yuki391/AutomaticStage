@@ -130,15 +130,26 @@ class PageExecution(tk.Frame):
         self.jog_buttons.append(btn_plus)
 
     def on_page_show(self):
-        # 共有データから情報を更新
         p_name = self.controller.shared_data.get('preset_name', 'Unknown')
         points = self.controller.shared_data.get('weld_points', [])
+
+        # ★追加: データがまだシフトされていない(DXFから来たばかり)なら、基準データとして保存
+        is_shifted = self.controller.shared_data.get('is_shifted', False)
+
+        # 初回ロード時、またはDXFエディタから再生成された場合は base_points を更新
+        if not is_shifted or self.base_points is None:
+            # deepcopyして保存（元のリストとは別物にする）
+            self.base_points = copy.deepcopy(points)
+            # フラグをFalseに（明示的リセット）
+            self.controller.shared_data['is_shifted'] = False
+
         self.lbl_preset.config(text=f"プリセット: {p_name}")
         self.lbl_points.config(text=f"点数: {len(points)} 点")
 
-        # アクティブなプリセットをロード
         if p_name in presets.WELDING_PRESETS:
             self.active_preset = presets.WELDING_PRESETS[p_name]
+
+        self.draw_preview(points)
 
     # ------------------------------------------------
     # 必須メソッド群 (ui_components / Logic から呼ばれる)
