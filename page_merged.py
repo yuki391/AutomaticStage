@@ -482,9 +482,10 @@ class PageMergedPreviewExecution(tk.Frame):
                         time.sleep(0.1)
                     self.add_log(f"[{i + 1}/{len(points)}] 処理を再開します。")
 
+                # 【修正箇所】breakではなくreturnに変更し、後の処理（原点復帰）を行わないようにする
                 if self.stop_event.is_set():
-                    self.add_log("中断されました。")
-                    break
+                    self.add_log("中断されました。緊急停止します。")
+                    return
 
                 target_x = float(p['x'])
                 target_y = float(p['y'])
@@ -498,9 +499,13 @@ class PageMergedPreviewExecution(tk.Frame):
 
                 self.motion.execute_welding_press(self.welder, self.active_preset)
 
-            self.add_log("--- 溶着ジョブ完了 ---")
-            self.motion.return_to_origin()
-            self.status_label.config(text="待機中", fg="black")
+            # ループを完走した場合のみ原点復帰を行う
+            if not self.stop_event.is_set():
+                self.add_log("--- 溶着ジョブ完了 ---")
+                self.motion.return_to_origin()
+                self.status_label.config(text="待機中", fg="black")
+            else:
+                self.add_log("緊急停止状態のため、原点復帰をスキップします。")
 
         except Exception as e:
             # ★詳細なエラー情報をコンソールに出力

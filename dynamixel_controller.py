@@ -17,7 +17,7 @@ ADDR_PROFILE_VELOCITY = 112
 ADDR_PROFILE_ACCELERATION = 108
 ADDR_MOVING = 122
 ADDR_ACCELERATION_LIMIT = 40
-
+ADDR_POSITION_P_GAIN = 800
 
 class DynamixelController:
     def __init__(self, log_callback=print):
@@ -132,3 +132,10 @@ class DynamixelController:
         if self._check_error(dxl_comm_result, dxl_error, dxl_id, f"Set Accel Limit: {acceleration_limit}"):
             self.log(f"  [HW] モーターID {dxl_id} の加速度制限値を設定: {acceleration_limit}")
 
+    def set_position_p_gain(self, dxl_id, p_gain):
+        # Pゲインは 2バイトデータなので write2ByteTxRx を使用
+        dxl_comm_result, dxl_error = self.packetHandler.write2ByteTxRx(
+            self.portHandler, dxl_id, ADDR_POSITION_P_GAIN, p_gain
+        )
+        if self._check_error(dxl_comm_result, dxl_error, dxl_id, f"Set P-Gain: {p_gain}"):
+            self.log(f"  [HW] モーターID {dxl_id} の Position P Gain を {p_gain} に設定しました。")

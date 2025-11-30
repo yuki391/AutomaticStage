@@ -72,8 +72,15 @@ class MotionSystem:
             if axis in ['x', 'y']:
                 self.dxl.set_operating_mode(dxl_id, 4)
             else:
+                # Z軸の設定
                 self.dxl.set_operating_mode(dxl_id, 3)
                 self.dxl.set_profile(dxl_id, config.PROFILE_VELOCITY_Z, config.PROFILE_ACCELERATION_Z)
+
+                # ▼▼▼ 追加: Z軸の Position P Gain を上げる設定 ▼▼▼
+                # 例: 2000 に設定 (デフォルトは通常 800)
+                # 必要に応じてこの値を調整してください
+                self.dxl.set_position_p_gain(dxl_id, 2000)
+
         self.log("全モーターのセットアップ完了。")
 
     def update_homing_backoff(self, speed=None, acceleration=None, backoff_mm=None, timeout=None):
