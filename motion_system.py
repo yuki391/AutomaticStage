@@ -406,22 +406,65 @@ class MotionSystem:
     def execute_welding_press(self, welder, preset):
         self.log("--- 溶着プレスシーケンス開始 ---")
         z_id = config.DXL_IDS['z']
+
+        # 1. 接触検知 (既存処理)
         self.log("  ステップ1: 優しい接触を開始 (電流制御)...")
         self.descend_until_contact(preset)
 
-        self.log(f"  ステップ2: {preset['weld_current']}mAで加圧し、溶着を実行...")
-        self.dxl.set_operating_mode(z_id, 0)
+        # 2. 加圧開始
+        self.log(f"  ステップ2: {preset['weld_current']}mAで加圧し、安定を待機...")
+        self.dxl.set_operating_mode(z_id, 0)  # 電流制御モード
         press_current_ma = preset['weld_current'] * config.MOTOR_DIRECTIONS['z']
         self.dxl.set_goal_current(z_id, press_current_ma)
-        time.sleep(0.5)
+
+        # --- 【変更点1】安定検知ロジック ---
+        # 位置の変化が緩やかになるまで監視する
+        stable_threshold = 3  # 変化がこのパルス数以下なら安定とみなす
+        check_interval = 0.1  # 監視間隔 (秒)
+        timeout = 3.0  # 最大待機時間 (秒)
+        start_wait = time.time()
+
+        last_pos = self.dxl.read_present_position(z_id)
+
+        while (time.time() - start_wait) < timeout:
+            time.sleep(check_interval)
+            current_pos = self.dxl.read_present_position(z_id)
+
+            if last_pos != -1 and current_pos != -1:
+                diff = abs(current_pos - last_pos)
+                if diff <= stable_threshold:
+                    self.log(f"  -> 押し付け安定 (変化: {diff} pulse)。溶着を開始します。")
+                    break
+
+            last_pos = current_pos
+        else:
+            self.log("  警告: 安定待ちがタイムアウトしました。強制的に進行します。")
+
+        # 3. 溶着実行
         welder.turn_on()
         weld_time_sec = preset['weld_time']
         time.sleep(weld_time_sec)
         welder.turn_off()
         self.log(f"  ステップ2: {weld_time_sec}秒の溶着完了。")
+
+        # 4. 加圧解除と退避
         self.dxl.set_goal_current(z_id, 0)
-        self.log(f"  ステップ3: 安全なパルス位置({config.SAFE_Z_PULSE})へ退避...")
-        self.move_z_abs_pulse(config.SAFE_Z_PULSE)
+
+        # --- 【変更点2】相対退避ロジック ---
+        # 現在地を取得し、そこから -150 した位置へ移動
+        # (configの設定上、値が小さくなる方向＝上方向)
+        final_pos = self.dxl.read_present_position(z_id)
+        if final_pos != -1:
+            retract_target = final_pos - 300
+            self.log(f"  ステップ3: 現在地({final_pos})から-150退避 -> 目標: {retract_target}")
+
+            # 安全のためリミットチェックを含んだ移動関数を使用
+            # (move_z_abs_pulse は内部で config.Z_LIMIT_MIN_PULSE をチェックします)
+            self.move_z_abs_pulse(retract_target)
+        else:
+            self.log("  エラー: 現在地の取得に失敗したため、安全位置へ退避します。")
+            self.move_z_abs_pulse(config.SAFE_Z_PULSE)
+
         self.log("--- 溶着プレスシーケンス完了 ---")
         return True
 

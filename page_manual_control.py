@@ -68,6 +68,17 @@ class PageManualControl(tk.Frame):
             self.logic.is_z_homed = True
             self.add_log("起動時設定: 現在位置をZ軸原点(0.0)に設定しました。")
 
+            # ▼▼▼ 追加: 起動時にZ軸を安全位置へ移動 (スレッド実行) ▼▼▼
+            def startup_z_move():
+                # 安全位置設定が config にあるか確認 (デフォルト値 2100)
+                safe_pulse = getattr(config, 'SAFE_Z_PULSE', 2100)
+                self.add_log(f"起動時: Z軸を安全位置({safe_pulse})へ移動します...")
+                self.motion.move_z_abs_pulse(safe_pulse)
+                self.add_log("起動時: Z軸移動完了")
+
+            # Logicクラスの機能を使って別スレッドで実行（画面が固まらないようにする）
+            self.logic.run_in_thread(startup_z_move)
+
     def on_page_show(self):
         # ページが表示されたときに、ログ出力先をこの画面に設定しなおす
         if self.motion:

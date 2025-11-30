@@ -8,22 +8,22 @@
 #
 # パラメータの説明:
 #   'weld_pitch'       : DXFから経路を生成する際の、溶着点の間隔 (mm)。
-#   'velocity_xy'      : XY軸の最高速度。大きいほど速い。★変わらない★
-#   'acceleration_xy'  : XY軸の加速度。小さいほど滑らか。★変わらない★
+#   'velocity_xy'      : XY軸の最高速度。大きいほど速い。
+#   'acceleration_xy'  : XY軸の加速度。小さいほど滑らか。
 #   'weld_current'     : 溶着時の加圧電流 (mA)。大きいほど強く押す。
-#   'gentle_current'   : 接触検知時の優しい接触電流 (mA)。　★自重で落ちて意味ないから後でマイナスの値で下がるやつにしたい★
+#   'gentle_current'   : 接触検知時の優しい接触電流 (mA)。　
 #   'weld_time'        : 超音波を発振する時間 (秒)。
 # ==========================================================================
 
 WELDING_PRESETS = {
-    "下記から選択": {#この名前は変えないで．config.pyでこの名前使ってる
-        'weld_pitch': 2.0,#点の間隔
-        'velocity_xy': 0,
-        'acceleration_xy':0,
-        'weld_current': 30,#押し付け力
-        'gentle_current': 30,
-        'weld_time': 2,#秒数
-        #amptdは６５
+    "下記から選択": {#config.pyでこの名前使ってるからこの名前は変えないで．
+        'weld_pitch': 2.0,
+        'velocity_xy': 300,
+        'acceleration_xy': 50,
+        'weld_current': 10,
+        'gentle_current': 2,
+        'weld_time': 1,
+        #基本的なパラメーター．amptdは80
     },
 
     "ポリウレタン(0.6+0.3mm)": {

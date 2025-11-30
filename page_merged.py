@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 import threading
 import time
 import copy
+import traceback
 import matplotlib
 
 matplotlib.use('TkAgg')
@@ -117,7 +118,7 @@ class PageMergedPreviewExecution(tk.Frame):
 
         step_f = tk.Frame(xy_panel)
         step_f.pack(pady=5)
-        tk.Label(step_f, text="Step:").pack(side='left')
+        tk.Label(step_f, text="移動距離(mm):").pack(side='left')
         self.step_entries['x'] = tk.Entry(step_f, width=5, justify='center')
         self.step_entries['x'].insert(0, "1.0")
         self.step_entries['x'].pack(side='left')
@@ -272,6 +273,8 @@ class PageMergedPreviewExecution(tk.Frame):
             self.active_preset = presets.WELDING_PRESETS[list(presets.WELDING_PRESETS.keys())[0]]
 
     def on_page_show(self):
+        if self.motion:
+            self.motion.log = self.add_log
         p_name = self.controller.shared_data.get('preset_name', 'Unknown')
         points = self.controller.shared_data.get('weld_points', [])
         is_shifted = self.controller.shared_data.get('is_shifted', False)
@@ -500,7 +503,11 @@ class PageMergedPreviewExecution(tk.Frame):
             self.status_label.config(text="待機中", fg="black")
 
         except Exception as e:
-            self.add_log(f"エラー発生: {e}")
+            # ★詳細なエラー情報をコンソールに出力
+            traceback.print_exc()
+            # ログにも表示
+            err_msg = f"エラー発生: {e}\n{traceback.format_exc()}"
+            self.add_log(err_msg)
             messagebox.showerror("実行時エラー", str(e))
             self.status_label.config(text="エラー停止", fg="red")
 
