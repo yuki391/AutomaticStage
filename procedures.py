@@ -138,7 +138,7 @@ def run_preview(motion, points, work_origin, preset):
 
     for i, (x, y) in enumerate(corners):
         motion.log(f"プレビュー移動 ({i + 1}/{len(corners)}): X={x:.2f}, Y={y:.2f}")
-        motion.move_xy_abs(x, y, preset)
+        motion.move_xy_abs(x, y, preset, precise_mode=True)
         time.sleep(0.5)
 
     motion.log("--- プレビュー完了 ---")

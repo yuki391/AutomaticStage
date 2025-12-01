@@ -100,8 +100,13 @@ class MotionSystem:
             self.log(f"ホーミングバックオフ設定更新エラー: {e}")
             return False
 
-    def move_xy_abs(self, x_mm, y_mm, preset):
-        self.log(f"XY -> ({x_mm:.2f}, {y_mm:.2f})mm")
+    def move_xy_abs(self, x_mm, y_mm, preset, precise_mode=False):
+        """
+        XY軸を絶対座標へ移動
+        precise_mode=True : プレビュー用。到達確認を厳密に行う（遅い）
+        precise_mode=False: 本番/ジョグ用。移動フラグが落ちたら完了とする（速い）
+        """
+        self.log(f"XY -> ({x_mm:.2f}, {y_mm:.2f})mm (Precise: {precise_mode})")
         velocity = preset['velocity_xy']
         acceleration = preset['acceleration_xy']
 
@@ -114,11 +119,51 @@ class MotionSystem:
         self.dxl.set_goal_position(config.DXL_IDS['x'], x_pulse)
         self.dxl.set_goal_position(config.DXL_IDS['y'], y_pulse)
 
-        while self.dxl.is_moving(config.DXL_IDS['x']) or self.dxl.is_moving(config.DXL_IDS['y']):
-            time.sleep(0.05)
+        if precise_mode:
+            # --- 【厳密モード】プレビュー用 ---
+            # 確実に停止し、座標が合うまで待つ
+            time.sleep(0.1)  # 動き出し待ち
+
+            timeout = 15.0
+            start_time = time.time()
+            position_threshold = 20
+
+            while True:
+                if time.time() - start_time > timeout:
+                    self.log("  警告: XY移動(厳密)がタイムアウトしました。")
+                    break
+
+                is_moving_x = self.dxl.is_moving(config.DXL_IDS['x'])
+                is_moving_y = self.dxl.is_moving(config.DXL_IDS['y'])
+                cur_x = self.dxl.read_present_position(config.DXL_IDS['x'])
+                cur_y = self.dxl.read_present_position(config.DXL_IDS['y'])
+
+                if cur_x == -1 or cur_y == -1:
+                    time.sleep(0.05)
+                    continue
+
+                diff_x = abs(x_pulse - cur_x)
+                diff_y = abs(y_pulse - cur_y)
+
+                # 停止かつ位置収束で完了
+                if (not is_moving_x and not is_moving_y):
+                    if (diff_x <= position_threshold and diff_y <= position_threshold):
+                        break
+                    # 停止しているが位置が合わない場合も、無限ループ防止のため抜けるなど検討可
+                    # ここでは厳密さを優先してループ継続（またはタイムアウト待ち）
+
+                time.sleep(0.05)
+
+        else:
+            # --- 【高速モード】本番溶着・ジョグ用 ---
+            # 以前の実装に近い、フラグが落ちたら即完了
+            # 通信ウェイトを少し短くしてレスポンス向上
+            while self.dxl.is_moving(config.DXL_IDS['x']) or self.dxl.is_moving(config.DXL_IDS['y']):
+                time.sleep(0.01)  # ポーリング間隔を短縮
 
         self.current_pos['x'], self.current_pos['y'] = x_mm, y_mm
-        self.log("XY 移動完了。")
+        # ログがうるさければコメントアウトしてください
+        # self.log("XY 移動完了。")
 
     def _home_single_axis(self, axis, sensor):
         """

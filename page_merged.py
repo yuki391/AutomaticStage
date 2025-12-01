@@ -4,6 +4,7 @@ import threading
 import time
 import copy
 import traceback
+import math  # ★追加: 距離計算に使用
 import matplotlib
 
 matplotlib.use('TkAgg')
@@ -470,6 +471,10 @@ class PageMergedPreviewExecution(tk.Frame):
 
             self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
 
+            # 現在位置を初期化（距離計算用）
+            current_x = self.motion.current_pos.get('x', 0.0)
+            current_y = self.motion.current_pos.get('y', 0.0)
+
             for i, p in enumerate(points):
                 # ★追加: 一時停止チェック（ループの頭で確認）
                 if not self.pause_event.is_set():
@@ -482,7 +487,6 @@ class PageMergedPreviewExecution(tk.Frame):
                         time.sleep(0.1)
                     self.add_log(f"[{i + 1}/{len(points)}] 処理を再開します。")
 
-                # 【修正箇所】breakではなくreturnに変更し、後の処理（原点復帰）を行わないようにする
                 if self.stop_event.is_set():
                     self.add_log("中断されました。緊急停止します。")
                     return
@@ -490,9 +494,18 @@ class PageMergedPreviewExecution(tk.Frame):
                 target_x = float(p['x'])
                 target_y = float(p['y'])
 
+                # ★距離によるモード判定
+                dist = math.hypot(target_x - current_x, target_y - current_y)
+                is_precise = (dist >= 5.0)  # 5mm以上なら厳密停止（プレビューと同じ）
+
                 self.add_log(f"({i + 1}/{len(points)}) 移動: X={target_x:.2f}, Y={target_y:.2f}")
 
-                self.motion.move_xy_abs(target_x, target_y, self.active_preset)
+                # ★移動命令 (precise_modeを指定)
+                self.motion.move_xy_abs(target_x, target_y, self.active_preset, precise_mode=is_precise)
+
+                # 現在位置を更新
+                current_x = target_x
+                current_y = target_y
 
                 if i == 0:
                     time.sleep(1)

@@ -21,6 +21,9 @@
 # トラブルシューティング
 # 加速度がおかしい時はDYNAMIXEL Wizard 2.0 等でモーターの Drive Mode (Address 10) を確認し、Time-based Profileになっていないか確認。
 # 通常動作に戻すには，選択解除して０にする。
+# Pゲインがおかしい事もある
+
+
 
 # main_app.py
 

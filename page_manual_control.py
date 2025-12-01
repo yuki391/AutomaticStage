@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
+import threading  # ★追加: スレッド処理用
+import time  # ★追加: スリープ用
 import ui_components
 from page_welding_control_logic import WeldingControlLogic
 import config
@@ -25,6 +27,9 @@ class PageManualControl(tk.Frame):
         self.step_entries = {}
         self.jog_buttons = []
 
+        # ★追加: フットペダル状態管理用
+        self.foot_pedal_active = False
+
         # Z軸位置表示用変数
         self.z_pos_var = tk.StringVar(value="Z軸現在地: --- mm")
 
@@ -49,10 +54,21 @@ class PageManualControl(tk.Frame):
         label = tk.Label(self, text="ステップ1: 初期設定・手動操作", font=("Arial", 16, "bold"))
         label.pack(pady=10)
 
-        btn_next = tk.Button(self, text="次へ: 溶着データ作成 (DXF編集) >>",
+        # ★変更: ボタン配置用のフレームを作成して整理
+        nav_frame = tk.Frame(self)
+        nav_frame.pack(fill='x', pady=5, padx=10)
+
+        # ★追加: フットペダル有効化ボタン (左側に配置)
+        self.btn_foot = tk.Button(nav_frame, text="フットペダル有効化",
+                                  bg="lightgray", font=("Arial", 12), height=2,
+                                  command=self.toggle_foot_pedal)
+        self.btn_foot.pack(side='left')
+
+        # 「次へ」ボタン (右側に配置)
+        btn_next = tk.Button(nav_frame, text="次へ: 溶着データ作成 (DXF編集) >>",
                              bg="lightblue", font=("Arial", 12), height=2,
                              command=lambda: controller.show_page("PageDxfEditor"))
-        btn_next.pack(pady=10)
+        btn_next.pack(side='right')
 
         ui_components.create_calibration_widgets(self, self)
         ui_components.create_manual_control_widgets(self, self)
@@ -68,7 +84,7 @@ class PageManualControl(tk.Frame):
             self.logic.is_z_homed = True
             self.add_log("起動時設定: 現在位置をZ軸原点(0.0)に設定しました。")
 
-            # ▼▼▼ 追加: 起動時にZ軸を安全位置へ移動 (スレッド実行) ▼▼▼
+            # 起動時にZ軸を安全位置へ移動 (スレッド実行)
             def startup_z_move():
                 # 安全位置設定が config にあるか確認 (デフォルト値 2100)
                 safe_pulse = getattr(config, 'SAFE_Z_PULSE', 2100)
@@ -84,20 +100,75 @@ class PageManualControl(tk.Frame):
         if self.motion:
             self.motion.log = self.add_log
 
+    # ★追加: フットペダル切り替え処理
+    def toggle_foot_pedal(self):
+        if self.foot_pedal_active:
+            # 無効化処理
+            self.foot_pedal_active = False
+            self.btn_foot.config(text="フットペダル有効化", bg="lightgray")
+            self.add_log("フットペダル操作を無効化しました。")
+        else:
+            # 有効化処理
+            if not self.dio:
+                self.add_log("エラー: DIOデバイスが接続されていません。")
+                return
+
+            self.foot_pedal_active = True
+            self.btn_foot.config(text="フットペダル有効中", bg="lightgreen")  # 色を変更
+            self.add_log("フットペダル操作を有効化しました。(ボタン押下で溶着機ON)")
+
+            # 監視スレッドを開始
+            t = threading.Thread(target=self._foot_pedal_loop)
+            t.daemon = True
+            t.start()
+
+    # ★追加: フットペダル監視ループ (別スレッドで実行)
+    def _foot_pedal_loop(self):
+        # foot_button.py の設定に準拠
+        BUTTON_CH = 0
+        WELDER_CH = 0  # config.WELDER_PIN と同じはずですが念のため0
+
+        last_state = -1
+
+        while self.foot_pedal_active:
+            try:
+                if not self.dio:
+                    break
+
+                # ボタン状態読み取り
+                button_state = self.dio.read(channel=BUTTON_CH, AI_DI='DI')
+
+                if button_state != last_state:
+                    if button_state == 1:
+                        self.add_log("フットスイッチON -> 溶着機ON")
+                        self.dio.write(channel=WELDER_CH, value=1, AO_DO='DO')
+                    else:
+                        self.add_log("フットスイッチOFF -> 溶着機OFF")
+                        self.dio.write(channel=WELDER_CH, value=0, AO_DO='DO')
+
+                    last_state = button_state
+
+                time.sleep(0.05)
+            except Exception as e:
+                self.add_log(f"フットペダルエラー: {e}")
+                self.foot_pedal_active = False
+                break
+
+        # ループを抜けたら安全のためOFFにする
+        if self.dio:
+            self.dio.write(channel=WELDER_CH, value=0, AO_DO='DO')
+
+        # ボタンの見た目を戻す（メインスレッド以外からの操作になるためtryで囲むか、afterを使うのが行儀良いが簡易実装）
+        try:
+            self.btn_foot.config(text="フットペダル有効化", bg="lightgray")
+        except:
+            pass
+
     def _start_ui_update_loop(self):
         """Z軸の現在位置表示を定期的に更新する"""
         if self.motion and hasattr(self, 'z_pos_var'):
-            # 原点復帰済みかどうかに関わらず、現在のパルスから計算した値を表示
-            # (未復帰時は大きな値になる可能性がありますが、動きを確認するため表示)
             try:
-                # MotionSystemのcurrent_posは移動完了時に更新されるが、
-                # リアルタイム性を高めるなら直接読む手もある。
-                # ここでは簡易的にmotion.current_posを使うか、
-                # 以前のように直接read_present_positionするのが確実。
-                # 今回は MotionSystem 内で管理されている current_pos['z'] を表示
                 z_mm = self.motion.current_pos.get('z', 0.0)
-                # 上方向を正とするか、下方向を正とするかはシステムによるが、
-                # ここでは画面表示に合わせて符号を調整（例: 下降がプラスならそのまま）
                 self.z_pos_var.set(f"Z軸現在地: {z_mm:.2f} mm")
             except Exception:
                 pass

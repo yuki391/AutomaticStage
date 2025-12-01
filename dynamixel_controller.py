@@ -104,10 +104,18 @@ class DynamixelController:
         self._check_error(dxl_comm_result, dxl_error, dxl_id, f"Set Goal Pos: {position_pulse}")
 
     def read_present_position(self, dxl_id):
-        dxl_present_position, dxl_comm_result, dxl_error = self.packetHandler.read4ByteTxRx(self.portHandler, dxl_id,
-                                                                                            ADDR_PRESENT_POSITION)
-        if self._check_error(dxl_comm_result, dxl_error, dxl_id, "Read Position"):
-            return dxl_present_position
+        try:
+            # tryブロックで囲むことで、SDK内部のエラーをキャッチします
+            dxl_present_position, dxl_comm_result, dxl_error = self.packetHandler.read4ByteTxRx(self.portHandler,
+                                                                                                dxl_id,
+                                                                                                ADDR_PRESENT_POSITION)
+            if self._check_error(dxl_comm_result, dxl_error, dxl_id, "Read Position"):
+                return dxl_present_position
+        except Exception as e:
+            # エラーが発生した場合はログを出して -1 (失敗) を返す
+            self.log(f"  [HW] 警告: 位置読み取りで例外が発生しました (ID:{dxl_id}) - {e}")
+            pass
+
         return -1
 
     def read_present_current(self, dxl_id):
