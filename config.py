@@ -47,12 +47,12 @@ PROFILE_ACCELERATION_Z = 0
 #0だとmaxの値になる
 
 # 安全な高さ (パルス位置)
-SAFE_Z_PULSE = 2100
+SAFE_Z_PULSE = 2000
 # 全ての工程が完了した後の、最終的なZ軸の退避高さ
-FINAL_RETRACT_PULSE = 1100
+FINAL_RETRACT_PULSE = 1500
 # モーターが移動できる範囲の最小値と最大値（パルス）を設定
-Z_LIMIT_MAX_PULSE = 2337 #Ｚ軸が一番下の時のパルス値
-Z_LIMIT_MIN_PULSE = 1121 #Ｚ軸が一番上の時のパルス値
+Z_LIMIT_MAX_PULSE = 2524 #Ｚ軸が一番下の時のパルス値
+Z_LIMIT_MIN_PULSE = 804 #Ｚ軸が一番上の時のパルス値
 
 # ==========================================================================
 # 原点復帰パラメータ

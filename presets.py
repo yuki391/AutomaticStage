@@ -21,7 +21,7 @@ WELDING_PRESETS = {
         'velocity_xy': 300,
         'acceleration_xy': 50,
         'weld_current': 5,
-        'gentle_current': -1,
+        'gentle_current': 15,
         'weld_time': 1,
         #基本的なパラメーター．amptdは80
     },

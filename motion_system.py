@@ -437,6 +437,51 @@ class MotionSystem:
 
         return True  # 移動成功
 
+    def move_z_abs_pulse_force(self, z_pulse):
+        """
+        ソフトリミットチェックを行わずに、Z軸を指定パルスへ強制移動させます。
+        z軸を一番下のpulse値から安定して上昇させるよう
+        """
+        self.log(f"⚠️ Z -> 絶対パルス位置 {z_pulse} へ強制移動（リミット無視）...")
+        z_id = config.DXL_IDS['z']
+
+        # 1. モードとプロファイルを設定
+        self.dxl.set_operating_mode(z_id, 3)  # 位置制御モード
+        self.dxl.set_profile(z_id, config.PROFILE_VELOCITY_Z, config.PROFILE_ACCELERATION_Z)
+
+        # 2. 目標位置を書き込み (リミットチェックなしで実行)
+        self.dxl.set_goal_position(z_id, z_pulse)
+
+        # --- 移動完了待ち処理 (元のロジックを維持) ---
+        self.log(f"  (強制移動待機中... 目標: {z_pulse})")
+        POSITION_THRESHOLD = 10
+        timeout_sec = 5.0
+        start_time = time.time()
+
+        while True:
+            current_pulse = self.dxl.read_present_position(z_id)
+            if current_pulse == -1:
+                self.log("  (警告: 現在位置の読み取りに失敗。待機を中断)")
+                break
+
+            diff = abs(z_pulse - current_pulse)
+            if diff <= POSITION_THRESHOLD:
+                self.log(f"  (目標位置に到達。 現在: {current_pulse})")
+                break
+
+            if (time.time() - start_time) > timeout_sec:
+                self.log(f"  (警告: Z軸強制移動がタイムアウトしました。 現在: {current_pulse})")
+                break
+            time.sleep(0.05)
+
+        final_pulse = self.dxl.read_present_position(z_id)
+        if final_pulse != -1:
+            self.log(f"Z軸 強制移動完了。 最終位置: {final_pulse}")
+        else:
+            self.log("Z軸 強制移動完了。（最終位置の読み取りに失敗しました）")
+
+        return True
+
     def move_xy_rel(self, dx_mm=0, dy_mm=0, preset=None):
         if preset is None:
             self.log("エラー: move_xy_relにプリセットが指定されていません。")
@@ -507,20 +552,18 @@ class MotionSystem:
         # 4. 加圧解除と退避
         self.dxl.set_goal_current(z_id, 0)
 
-        # --- 【変更点2】相対退避ロジック ---
-        # 現在地を取得し、そこから -150 した位置へ移動
-        # (configの設定上、値が小さくなる方向＝上方向)
+        # --- 【変更点2】相対退避ロジック (待機処理削除版) ---
         final_pos = self.dxl.read_present_position(z_id)
         if final_pos != -1:
-            retract_target = final_pos - 300
-            self.log(f"  ステップ3: 現在地({final_pos})から-150退避 -> 目標: {retract_target}")
+            retract_target = final_pos - 100
+            self.log(f"  ステップ3: 現在地({final_pos})から-300退避 -> 目標: {retract_target}")
 
             # 安全のためリミットチェックを含んだ移動関数を使用
-            # (move_z_abs_pulse は内部で config.Z_LIMIT_MIN_PULSE をチェックします)
-            self.move_z_abs_pulse(retract_target)
+            # (move_z_abs_pulse は内部で config.Z_LIMIT_MIN_PULSE をチェックし、到着確認も行います)
+            self.move_z_abs_pulse_force(retract_target)
         else:
             self.log("  エラー: 現在地の取得に失敗したため、安全位置へ退避します。")
-            self.move_z_abs_pulse(config.SAFE_Z_PULSE)
+            self.move_z_abs_pulse_force(config.SAFE_Z_PULSE)
 
         self.log("--- 溶着プレスシーケンス完了 ---")
         return True
