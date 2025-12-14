@@ -555,11 +555,17 @@ class MotionSystem:
         # --- 【変更点2】相対退避ロジック (待機処理削除版) ---
         final_pos = self.dxl.read_present_position(z_id)
         if final_pos != -1:
-            retract_target = final_pos - 100
-            self.log(f"  ステップ3: 現在地({final_pos})から-300退避 -> 目標: {retract_target}")
+            # プリセットに 'long_retract' が True で入っていたら -300 退避
+            if preset.get('long_retract', False):
+                retract_amount = 500
+                self.log(f"  ステップ3: 次の移動が長いため、退避量を増やします(-{retract_amount})。")
+            else:
+                # 通常時は -100 退避
+                retract_amount = 100
 
-            # 安全のためリミットチェックを含んだ移動関数を使用
-            # (move_z_abs_pulse は内部で config.Z_LIMIT_MIN_PULSE をチェックし、到着確認も行います)
+            retract_target = final_pos - retract_amount
+            self.log(f"  ステップ3: 現在地({final_pos})から -{retract_amount} 退避 -> 目標: {retract_target}")
+
             self.move_z_abs_pulse_force(retract_target)
         else:
             self.log("  エラー: 現在地の取得に失敗したため、安全位置へ退避します。")

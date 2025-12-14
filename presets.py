@@ -11,17 +11,17 @@
 #   'velocity_xy'      : 標準300．XY軸の最高速度。大きいほど速い。
 #   'acceleration_xy'  : 標準50．XY軸の加速度。小さいほど滑らか。
 #   'weld_current'     : 標準5．溶着時の加圧電流 (mA)。大きいほど強く押す。
-#   'gentle_current'   : ゆっくりめ-1．接触検知時の優しい接触電流 (mA)。　
+#   'gentle_current'   : ゆっくりめ-1，速め10．接触検知時の優しい接触電流 (mA)。　
 #   'weld_time'        : 標準1．超音波を発振する時間 (秒)。
 # ==========================================================================
 
 WELDING_PRESETS = {
     "下記から選択": {#config.pyでこの名前使ってるからこの名前は変えないで．
-        'weld_pitch': 2.0,
+        'weld_pitch': 10.0,
         'velocity_xy': 300,
         'acceleration_xy': 50,
         'weld_current': 5,
-        'gentle_current': 15,
+        'gentle_current': 8,
         'weld_time': 1,
         #基本的なパラメーター．amptdは80
     },

@@ -626,6 +626,7 @@ class PageMergedPreviewExecution(tk.Frame):
             current_y = self.motion.current_pos.get('y', 0.0)
 
             for i, p in enumerate(points):
+                # --- 一時停止チェック ---
                 if not self.pause_event.is_set():
                     self.add_log(f"[{i + 1}/{len(points)}] 一時停止中... (Z軸退避済み)")
                     while not self.pause_event.is_set():
@@ -635,6 +636,7 @@ class PageMergedPreviewExecution(tk.Frame):
                         time.sleep(0.1)
                     self.add_log(f"[{i + 1}/{len(points)}] 処理を再開します。")
 
+                # --- 中断チェック ---
                 if self.stop_event.is_set():
                     self.add_log("中断されました。緊急停止します。")
                     return
@@ -642,7 +644,7 @@ class PageMergedPreviewExecution(tk.Frame):
                 target_x = float(p['x'])
                 target_y = float(p['y'])
 
-                # 距離判定: 5mm以上なら厳密停止
+                # 距離判定: 現在地から5mm以上移動するなら厳密停止モードにする
                 dist = math.hypot(target_x - current_x, target_y - current_y)
                 is_precise = (dist >= 5.0)
 
@@ -656,7 +658,38 @@ class PageMergedPreviewExecution(tk.Frame):
                 if i == 0:
                     time.sleep(1)
 
-                self.motion.execute_welding_press(self.welder, self.active_preset)
+                # ▼▼▼▼▼▼▼▼▼▼ 修正ここから ▼▼▼▼▼▼▼▼▼▼
+
+                # 1. 実行用のプリセットをコピー作成
+                exec_preset = self.active_preset.copy()
+
+                # 2. 次の点までの距離を計算する
+                dist_to_next = 0.0
+                if i < len(points) - 1:
+                    next_p = points[i + 1]
+                    # 次の点の座標
+                    nx = float(next_p['x'])
+                    ny = float(next_p['y'])
+                    # 現在のターゲット(target_x, target_y)からの距離
+                    dist_to_next = math.hypot(nx - target_x, ny - target_y)
+
+                # 3. 距離が20mm以上なら、退避量を増やすフラグ(long_retract)をON
+                if dist_to_next >= 20.0:
+                    exec_preset['long_retract'] = True
+                    self.add_log(f"  -> 次の点まで {dist_to_next:.1f}mm。退避量を増やします(-300)。")
+                else:
+                    exec_preset['long_retract'] = False
+
+                # 4. 1点目(i=0)の場合のみ、接触検知電流(gentle_current)を変更
+                if i == 0:
+                    special_current = -1  # ★ここで電流値を指定
+                    exec_preset['gentle_current'] = special_current
+                    self.add_log(f"★初回限定: 接触検知電流を {special_current}mA に変更して実行します。")
+
+                # 5. 実行 (コピーしたプリセットを渡す)
+                self.motion.execute_welding_press(self.welder, exec_preset)
+
+                # ▲▲▲▲▲▲▲▲▲▲ 修正ここまで ▲▲▲▲▲▲▲▲▲▲
 
             if not self.stop_event.is_set():
                 self.add_log("--- 溶着ジョブ完了 ---")
@@ -664,6 +697,13 @@ class PageMergedPreviewExecution(tk.Frame):
                 self.status_label.config(text="待機中", fg="black")
             else:
                 self.add_log("緊急停止状態のため、原点復帰をスキップします。")
+
+        except Exception as e:
+            traceback.print_exc()
+            err_msg = f"エラー発生: {e}\n{traceback.format_exc()}"
+            self.add_log(err_msg)
+            messagebox.showerror("実行時エラー", str(e))
+            self.status_label.config(text="エラー停止", fg="red")
 
         except Exception as e:
             traceback.print_exc()

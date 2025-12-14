@@ -98,6 +98,7 @@ class WeldingControlLogic:
                     return
 
             self.main.add_log(f"--- 溶着ジョブ開始 ({len(points)}点) ---")
+
             for i, p in enumerate(points):
                 if self.stop_event.is_set():
                     self.main.add_log("中断されました。")
@@ -112,7 +113,24 @@ class WeldingControlLogic:
                 if i == 0:
                     self.main.add_log("-> 初回移動のため1秒待機します。")
                     time.sleep(1)
-                self.main.motion.execute_welding_press(self.main.welder, self.main.active_preset)
+
+                # ▼▼▼▼▼▼▼▼▼▼ 修正ここから ▼▼▼▼▼▼▼▼▼▼
+
+                # 1. 現在のプリセットをコピーして、この回専用の設定を作る
+                exec_preset = self.main.active_preset.copy()
+
+                # 2. 1点目(i=0)の場合のみ、gentle_current(接触検知電流)を書き換える
+                if i == 0:
+                    # ★ここで電流値を変更してください（例：50mA）
+                    special_current = -1
+                    exec_preset['gentle_current'] = special_current
+                    self.main.add_log(f"★初回限定: 接触検知電流を {special_current}mA に変更して実行します。")
+
+                # 3. 実行命令には、コピーして編集した 'exec_preset' を渡す
+                # (ここを self.main.active_preset のままにすると反映されません！)
+                self.main.motion.execute_welding_press(self.main.welder, exec_preset)
+
+                # ▲▲▲▲▲▲▲▲▲▲ 修正ここまで ▲▲▲▲▲▲▲▲▲▲
 
             self.main.add_log("--- 溶着ジョブ完了 ---")
             self.main.motion.return_to_origin()
