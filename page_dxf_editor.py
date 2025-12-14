@@ -11,7 +11,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 
 import config
 import presets
-from dxf_parser import get_all_entities_as_segments, find_connected_path
+from dxf_parser import get_all_entities_as_segments, find_all_connected_paths
 from path_generator import generate_path_as_points
 from plot_builder import create_plot_figure
 from csv_handler import save_path_to_csv
@@ -99,25 +99,35 @@ class PageDxfEditor(tk.Frame):
         try:
             self.file_label.config(text=f"{os.path.basename(self.dxf_path)} を処理中...")
             self.update_idletasks()
+
+            # DXFから線分を取得
             segments = get_all_entities_as_segments(self.dxf_path, config.CURVE_SEGMENTS)
             if not segments:
-                messagebox.showwarning("解析エラー", "DXFファイルから有効な図形が見つかりませんでした。");
+                messagebox.showwarning("解析エラー", "DXFファイルから有効な図形が見つかりませんでした。")
                 return
-            vertices, is_closed = find_connected_path(segments)
-            if not vertices:
-                messagebox.showwarning("解析エラー", "図形を連続した輪郭として再構築できませんでした。");
+
+            # ★ここを変更: 複数パス対応の関数を呼ぶ
+            # 戻り値は「パスのリスト」のみ（is_closedフラグは各パスに含まれるため個別には返ってこない）
+            all_paths = find_all_connected_paths(segments)
+
+            if not all_paths:
+                messagebox.showwarning("解析エラー", "図形を構築できませんでした。")
                 return
 
             selected_preset_name = self.controller.shared_data['preset_name']
             active_preset = presets.WELDING_PRESETS[selected_preset_name]
-            path_data = generate_path_as_points(vertices, is_closed, active_preset)
+
+            # ★ここを変更: 生成された複数のパスを渡す
+            path_data = generate_path_as_points(all_paths, active_preset)
 
             if not path_data:
                 messagebox.showerror("経路生成エラー", "DXFファイルから有効な溶着点を1つも生成できませんでした。")
-                self.file_label.config(text=os.path.basename(self.dxf_path));
+                self.file_label.config(text=os.path.basename(self.dxf_path))
                 return
 
-            fig = create_plot_figure(vertices, path_data)
+            # ★ここを変更: グラフ描画にも複数のパスを渡す
+            fig = create_plot_figure(all_paths, path_data)
+
             if fig:
                 fig._timestamp = datetime.datetime.now()
                 self.current_fig = fig
@@ -126,7 +136,11 @@ class PageDxfEditor(tk.Frame):
             else:
                 messagebox.showinfo("情報", "グラフの生成に失敗しました。")
             self.file_label.config(text=os.path.basename(self.dxf_path))
+
         except Exception as e:
+            # エラー詳細を表示
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{e}")
             self.file_label.config(text=os.path.basename(self.dxf_path))
 

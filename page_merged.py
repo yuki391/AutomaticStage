@@ -4,7 +4,7 @@ import threading
 import time
 import copy
 import traceback
-import math  # ★追加: 距離計算に使用
+import math
 import matplotlib
 
 matplotlib.use('TkAgg')
@@ -55,7 +55,6 @@ class PageMergedPreviewExecution(tk.Frame):
 
         # 実行制御用イベント
         self.stop_event = threading.Event()
-        # ★追加: 一時停止用イベント (set=実行中, clear=一時停止中)
         self.pause_event = threading.Event()
         self.pause_event.set()  # 初期状態は「実行許可」
 
@@ -155,14 +154,14 @@ class PageMergedPreviewExecution(tk.Frame):
         self.canvas = None
 
         # =================================================================
-        # 下段 (Row 2) - 4カラム構成に変更 (ログ | Z軸 | 一時停止 | 実行)
+        # 下段 (Row 2) - 4カラム構成 (ログ | Z軸 | 一時停止 | 実行)
         # =================================================================
         bottom_container = tk.Frame(self)
         bottom_container.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
 
         bottom_container.columnconfigure(0, weight=1)  # ログ (伸縮)
         bottom_container.columnconfigure(1, weight=0)  # Z軸
-        bottom_container.columnconfigure(2, weight=0)  # ★追加: 一時停止
+        bottom_container.columnconfigure(2, weight=0)  # 一時停止
         bottom_container.columnconfigure(3, weight=0)  # 実行
 
         # --- 左下: ログ ---
@@ -203,11 +202,10 @@ class PageMergedPreviewExecution(tk.Frame):
         btn_z_go.pack(side='left')
         self.jog_buttons.append(btn_z_go)
 
-        # --- ★追加: 一時停止・再開エリア ---
+        # --- 真ん中2: 一時停止・再開エリア ---
         pause_frame = ttk.LabelFrame(bottom_container, text="一時停止/再開")
         pause_frame.grid(row=0, column=2, sticky="nsew", padx=5)
 
-        # アイコン的に分かりやすい色分け
         tk.Button(pause_frame, text="一時停止\n(Pause)", bg="yellow", width=10, height=2,
                   command=self.pause_job).pack(pady=5, padx=10, fill='x')
 
@@ -223,19 +221,29 @@ class PageMergedPreviewExecution(tk.Frame):
                                            command=self.logic.run_homing_sequence)
         self.btn_homing_bottom.pack(fill='x', padx=10, pady=(5, 5))
 
+        # --- プレビュー/実行ボタンエリア ---
         btn_area = tk.Frame(exec_frame)
         btn_area.pack(fill='x', pady=5, padx=5)
 
-        btn_preview = tk.Button(btn_area, text="動作プレビュー\n(溶着なし)",
-                                command=self.run_dry_run_preview)
-        btn_preview.pack(side='left', fill='both', expand=True, padx=5)
-        self.jog_buttons.append(btn_preview)
+        # 範囲プレビュー (四隅のみ)
+        btn_range_prev = tk.Button(btn_area, text="範囲プレビュー\n(四隅確認)",
+                                   command=self.run_range_preview)
+        btn_range_prev.pack(side='left', fill='both', expand=True, padx=2)
+        self.jog_buttons.append(btn_range_prev)
 
+        # 詳細プレビュー (経路トレース)
+        btn_trace_prev = tk.Button(btn_area, text="詳細プレビュー\n(経路トレース)",
+                                   command=self.run_detailed_preview)
+        btn_trace_prev.pack(side='left', fill='both', expand=True, padx=2)
+        self.jog_buttons.append(btn_trace_prev)
+
+        # 溶着開始ボタン
         self.start_btn = tk.Button(btn_area, text="★ 溶着開始 ★", bg="red", fg="white", font=("Arial", 12, "bold"),
                                    height=2, command=self.start_real_welding)
         self.start_btn.pack(side='left', fill='both', expand=True, padx=5)
         self.jog_buttons.append(self.start_btn)
 
+        # 緊急停止エリア
         safe_area = tk.Frame(exec_frame)
         safe_area.pack(fill='x', pady=5, padx=5)
 
@@ -411,26 +419,170 @@ class PageMergedPreviewExecution(tk.Frame):
         self.draw_preview(new_points)
 
     # =======================================================
-    # ★追加: 一時停止・再開メソッド
+    # 一時停止・再開メソッド
     # =======================================================
     def pause_job(self):
-        """一時停止ボタンが押されたとき"""
         if self.pause_event.is_set():
             self.pause_event.clear()
             self.add_log("--- 一時停止要求 ---")
-            self.add_log("現在の溶着サイクル終了後に停止します...")
+            self.add_log("現在の移動・溶着完了後に停止します...")
             self.status_label.config(text="一時停止中 (待機)", fg="orange")
         else:
             self.add_log("既に一時停止中です。")
 
     def resume_job(self):
-        """再開ボタンが押されたとき"""
         if not self.pause_event.is_set():
             self.pause_event.set()
             self.add_log("--- 再開 ---")
             self.status_label.config(text="実行中", fg="black")
         else:
             self.add_log("停止していません。")
+
+    # =======================================================
+    # 実行関連メソッド
+    # =======================================================
+    def run_range_preview(self):
+        """四隅だけの高速プレビュー (別スレッド実行)"""
+        points = self.controller.shared_data.get('weld_points', [])
+        if not points:
+            messagebox.showwarning("警告", "データがありません")
+            return
+
+        # 実行中フラグセット
+        self.stop_event.clear()
+        self.pause_event.set()
+        self.status_label.config(text="実行中 (範囲プレビュー)", fg="blue")
+
+        # 別スレッドで実行（フリーズ防止）
+        t = threading.Thread(target=self._range_preview_thread, args=(points,))
+        t.daemon = True
+        t.start()
+
+    def _range_preview_thread(self, points):
+        try:
+            self.add_log("--- 範囲プレビュー (四隅) 開始 ---")
+
+            # 1. 範囲計算
+            xs = [p['x'] for p in points]
+            ys = [p['y'] for p in points]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+
+            # エリアチェック (マシンスペック内か)
+            if (min_x < 0 or max_x > config.MACHINE_MAX_X_MM or
+                    min_y < 0 or max_y > config.MACHINE_MAX_Y_MM):
+                self.add_log("エラー: 加工範囲がマシンの可動域を超えています。")
+                return
+
+            corners = [
+                (min_x, min_y), (max_x, min_y),
+                (max_x, max_y), (min_x, max_y),
+                (min_x, min_y)
+            ]
+
+            # 2. 安全高さへ
+            self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
+
+            # 3. 四隅を巡回
+            for i, (cx, cy) in enumerate(corners):
+                if self.stop_event.is_set():
+                    self.add_log("プレビューを中断しました。")
+                    return
+
+                self.add_log(f"コーナーへ移動 ({i + 1}/5): X={cx:.1f}, Y={cy:.1f}")
+
+                # 厳密モードで移動 (motion_system側で調整した閾値を使用)
+                self.motion.move_xy_abs(cx, cy, self.active_preset, precise_mode=True)
+
+                time.sleep(0.5)
+
+            self.add_log("--- 範囲プレビュー 完了 ---")
+            self.motion.return_to_origin()
+            self.status_label.config(text="待機中", fg="black")
+
+        except Exception as e:
+            traceback.print_exc()
+            self.add_log(f"エラー: {e}")
+            self.status_label.config(text="エラー停止", fg="red")
+
+    def run_detailed_preview(self):
+        """実際の経路をなぞる詳細プレビュー (溶着なし)"""
+        if not self.motion: return
+        points = self.controller.shared_data.get('weld_points', [])
+        if not points:
+            messagebox.showwarning("警告", "溶着データがありません。")
+            return
+
+        self.stop_event.clear()
+        self.pause_event.set()
+        self.status_label.config(text="実行中 (詳細プレビュー)", fg="blue")
+
+        t = threading.Thread(target=self._detailed_preview_thread, args=(points,))
+        t.daemon = True
+        t.start()
+
+    def _detailed_preview_thread(self, points):
+        try:
+            self.add_log("--- 詳細プレビュー (経路トレース) 開始 ---")
+
+            if not run_preview(self.motion, points, (0, 0), self.active_preset):
+                self.add_log("範囲チェックエラーのため停止します。")
+                return
+
+            if self.stop_event.is_set(): return
+
+            self.add_log("移動を開始します...")
+            self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
+
+            # ★変更: プレビュー用の高速設定 (元のプリセットをコピーして速度だけ上書き)
+            preview_preset = self.active_preset.copy()
+            preview_preset['velocity_xy'] = 300
+            preview_preset['acceleration_xy'] = 100
+
+            current_x = self.motion.current_pos.get('x', 0.0)
+            current_y = self.motion.current_pos.get('y', 0.0)
+
+            for i, p in enumerate(points):
+                if not self.pause_event.is_set():
+                    self.add_log(f"[{i + 1}/{len(points)}] 一時停止中...")
+                    while not self.pause_event.is_set():
+                        if self.stop_event.is_set(): return
+                        time.sleep(0.1)
+                    self.add_log("再開します。")
+
+                if self.stop_event.is_set():
+                    self.add_log("中断されました。")
+                    return
+
+                target_x = float(p['x'])
+                target_y = float(p['y'])
+
+                # 5mm以上離れている場合は厳密停止モード、それ以外は通常移動
+                dist = math.hypot(target_x - current_x, target_y - current_y)
+                is_precise = (dist >= 5.0)
+
+                # プレビューなのでログは少なめに
+                if i % 10 == 0 or is_precise:
+                    self.add_log(f"Trace ({i + 1}/{len(points)}): {target_x:.1f}, {target_y:.1f}")
+
+                # ★変更: 高速プレビュー用プリセットで移動
+                self.motion.move_xy_abs(target_x, target_y, preview_preset, precise_mode=is_precise)
+
+                # ★変更: 待ち時間を短縮 (0.2 -> 0.05)
+                if is_precise:
+                    time.sleep(0.05)
+
+                current_x = target_x
+                current_y = target_y
+
+            self.add_log("--- 詳細プレビュー完了 ---")
+            self.motion.return_to_origin()
+            self.status_label.config(text="待機中", fg="black")
+
+        except Exception as e:
+            traceback.print_exc()
+            self.add_log(f"エラー: {e}")
+            self.status_label.config(text="エラー停止", fg="red")
 
     def start_real_welding(self):
         if not self.motion:
@@ -447,7 +599,7 @@ class PageMergedPreviewExecution(tk.Frame):
             return
 
         self.stop_event.clear()
-        self.pause_event.set()  # 開始時は必ず実行許可状態にする
+        self.pause_event.set()
         self.status_label.config(text="実行中", fg="black")
 
         t = threading.Thread(target=self._welding_flow_absolute_thread, args=(points,))
@@ -456,10 +608,9 @@ class PageMergedPreviewExecution(tk.Frame):
 
     def _welding_flow_absolute_thread(self, points):
         try:
-            self.add_log("--- 溶着プロセス開始 (絶対座標モード) ---")
+            self.add_log("--- 溶着プロセス開始 ---")
 
-            work_origin = (0.0, 0.0)
-            if not run_preview(self.motion, points, work_origin, self.active_preset):
+            if not run_preview(self.motion, points, (0, 0), self.active_preset):
                 self.add_log("プレビューチェックでエラー検出。停止します。")
                 return
 
@@ -471,15 +622,12 @@ class PageMergedPreviewExecution(tk.Frame):
 
             self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
 
-            # 現在位置を初期化（距離計算用）
             current_x = self.motion.current_pos.get('x', 0.0)
             current_y = self.motion.current_pos.get('y', 0.0)
 
             for i, p in enumerate(points):
-                # ★追加: 一時停止チェック（ループの頭で確認）
                 if not self.pause_event.is_set():
                     self.add_log(f"[{i + 1}/{len(points)}] 一時停止中... (Z軸退避済み)")
-                    # 待機ループ (緊急停止も監視)
                     while not self.pause_event.is_set():
                         if self.stop_event.is_set():
                             self.add_log("一時停止中に緊急停止されました。")
@@ -494,16 +642,14 @@ class PageMergedPreviewExecution(tk.Frame):
                 target_x = float(p['x'])
                 target_y = float(p['y'])
 
-                # ★距離によるモード判定
+                # 距離判定: 5mm以上なら厳密停止
                 dist = math.hypot(target_x - current_x, target_y - current_y)
-                is_precise = (dist >= 5.0)  # 5mm以上なら厳密停止（プレビューと同じ）
+                is_precise = (dist >= 5.0)
 
                 self.add_log(f"({i + 1}/{len(points)}) 移動: X={target_x:.2f}, Y={target_y:.2f}")
 
-                # ★移動命令 (precise_modeを指定)
                 self.motion.move_xy_abs(target_x, target_y, self.active_preset, precise_mode=is_precise)
 
-                # 現在位置を更新
                 current_x = target_x
                 current_y = target_y
 
@@ -512,7 +658,6 @@ class PageMergedPreviewExecution(tk.Frame):
 
                 self.motion.execute_welding_press(self.welder, self.active_preset)
 
-            # ループを完走した場合のみ原点復帰を行う
             if not self.stop_event.is_set():
                 self.add_log("--- 溶着ジョブ完了 ---")
                 self.motion.return_to_origin()
@@ -521,22 +666,18 @@ class PageMergedPreviewExecution(tk.Frame):
                 self.add_log("緊急停止状態のため、原点復帰をスキップします。")
 
         except Exception as e:
-            # ★詳細なエラー情報をコンソールに出力
             traceback.print_exc()
-            # ログにも表示
             err_msg = f"エラー発生: {e}\n{traceback.format_exc()}"
             self.add_log(err_msg)
             messagebox.showerror("実行時エラー", str(e))
             self.status_label.config(text="エラー停止", fg="red")
 
     def run_dry_run_preview(self):
-        self.add_log("動作プレビューは未実装です（範囲チェックのみ実行されます）")
-        points = self.controller.shared_data.get('weld_points', [])
-        run_preview(self.motion, points, (0, 0), self.active_preset)
+        # 旧メソッド名の互換性維持（念のため）
+        self.run_range_preview()
 
     def on_emergency_stop(self):
         self.stop_event.set()
-        # 念のためpause_eventもsetして待機ループを抜けさせる（緊急停止処理を優先）
         self.pause_event.set()
         self.logic.on_emergency_stop()
         self.status_label.config(text="緊急停止", fg="red")

@@ -1,77 +1,76 @@
 # plot_builder.py
-
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Polygon  # ★このインポートが必要です
-
-import config
 
 
-def create_plot_figure(outline_vertices, weld_points_data):
+def create_plot_figure(all_paths_vertices, weld_points_data):
     """
-    DXFの輪郭と、新しい点ベースの溶着経路をプロットする。
+    DXFの輪郭(複数パス対応)と、溶着点をプロットする。
     """
     fig, ax = plt.subplots(figsize=(10, 8))
 
-    # ▼▼▼ 追加: 点のサイズ(s_size)の計算 ▼▼▼
-    span = 100.0
-    if outline_vertices is not None and len(outline_vertices) > 0:
-        outline = np.array(outline_vertices)
-        if len(outline) > 0:
-            x_range = outline[:, 0].max() - outline[:, 0].min()
-            y_range = outline[:, 1].max() - outline[:, 1].min()
-            span = max(x_range, y_range)
-    elif weld_points_data:
-        # 輪郭がない場合は点データから計算
-        pts = np.array([[p['x'], p['y']] for p in weld_points_data])
-        if len(pts) > 0:
-            x_range = pts[:, 0].max() - pts[:, 0].min()
-            y_range = pts[:, 1].max() - pts[:, 1].min()
-            span = max(x_range, y_range)
+    # --- 縮尺計算用 ---
+    all_x = []
+    all_y = []
 
-    # 範囲が広い(=縮尺小)ときは点を小さく、狭い(=拡大)ときは大きく
-    # 係数2000は調整可能です
-    if span > 0:
-        s_size = 2000.0 / span
+    # パスの座標収集
+    if all_paths_vertices:
+        # 単一パスか複数パスか判定して統一
+        paths = all_paths_vertices if isinstance(all_paths_vertices[0][0], (list, tuple, np.ndarray)) else [
+            all_paths_vertices]
+
+        for path in paths:
+            p_arr = np.array(path)
+            if len(p_arr) > 0:
+                all_x.extend(p_arr[:, 0])
+                all_y.extend(p_arr[:, 1])
+                # 線を描画
+                ax.plot(p_arr[:, 0], p_arr[:, 1], 'b-', linewidth=1.0, alpha=0.7)
+
+    # 点の座標収集
+    if weld_points_data:
+        px = [p['x'] for p in weld_points_data]
+        py = [p['y'] for p in weld_points_data]
+        all_x.extend(px)
+        all_y.extend(py)
+
+    # スケール調整
+    if all_x and all_y:
+        span_x = max(all_x) - min(all_x)
+        span_y = max(all_y) - min(all_y)
+        span = max(span_x, span_y)
+        s_size = 2000.0 / span if span > 0 else 20.0
+        s_size = max(1.0, min(s_size, 50.0))
     else:
         s_size = 20.0
 
-    # サイズが大きすぎたり小さすぎたりしないように制限
-    s_size = max(1.0, min(s_size, 50.0))
-    # ▲▲▲ 追加ここまで ▲▲▲
-
-    # 1. DXFの輪郭を描画
-    if outline_vertices is not None and len(outline_vertices) > 0:
-        outline = np.array(outline_vertices)
-        ax.plot(outline[:, 0], outline[:, 1], 'b-', label='DXF Outline', linewidth=1.0)
-
-        # ★ここで poly を定義して追加 (エラーの原因はおそらくここが抜けていたため)
-        poly = Polygon(outline, closed=True, facecolor='blue', alpha=0.1)
-        ax.add_patch(poly)
-
-    # 2. 溶着点を散布図として描画 (サイズ s を動的に設定)
+    # 溶着点を描画
     if weld_points_data:
-        points = np.array([[p['x'], p['y']] for p in weld_points_data])
-        # s=s_size を指定
-        scatter = ax.scatter(points[:, 0], points[:, 1], c='red', s=s_size, label='Weld Points', zorder=5)
+        pts = np.array([[p['x'], p['y']] for p in weld_points_data])
+        scatter = ax.scatter(pts[:, 0], pts[:, 1], c='red', s=s_size, label='Weld Points', zorder=5)
     else:
-        # データがない場合もscatterオブジェクトを空で作成
         scatter = ax.scatter([], [], c='red', s=s_size, label='Weld Points', zorder=5)
 
     ax.set_aspect('equal', adjustable='box')
     ax.set_xlabel("X (mm)")
     ax.set_ylabel("Y (mm)")
-    ax.set_title("DXF Outline and Generated Weld Path")
-
-    # 凡例を外に出す
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    ax.set_title("Generated Path")
     ax.grid(True, linestyle='--', alpha=0.6)
 
-    fig.tight_layout()
+    # 凡例設定 (枠外に配置)
+    from matplotlib.lines import Line2D
+    custom_lines = [Line2D([0], [0], color='b', lw=1),
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='r', markersize=8)]
 
-    # Matplotlibのインタラクティブな編集で使うデータをfigureオブジェクトに格納
+    # bbox_to_anchor でグラフエリアの外(右上のさらに右)に配置
+    ax.legend(custom_lines, ['Outline', 'Weld Points'],
+              bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+
+    # レイアウト調整（凡例が見切れないように左側と下側を空ける）
+    fig.subplots_adjust(right=0.8)
+
+    # インタラクティブ編集用データ格納
     fig._weld_data = weld_points_data
     fig._weld_artists = {'scatter': scatter}
-    fig._helpers = {'outline_vertices': outline_vertices}
 
     return fig
