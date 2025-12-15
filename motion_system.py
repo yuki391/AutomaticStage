@@ -170,6 +170,64 @@ class MotionSystem:
 
         self.current_pos['x'], self.current_pos['y'] = x_mm, y_mm
 
+    def move_xy_continuous(self, x_mm, y_mm, preset, threshold_mm=5.0):
+        """
+        目標地点の threshold_mm 手前まで到達したら次へ進む。
+        さらに、物理的に停止してしまった場合も検知して次へ進む（フリーズ防止）。
+        """
+        velocity = preset['velocity_xy']
+        acceleration = preset['acceleration_xy']
+
+        self.dxl.set_profile(config.DXL_IDS['x'], velocity, acceleration)
+        self.dxl.set_profile(config.DXL_IDS['y'], velocity, acceleration)
+
+        x_pulse = self._mm_to_pulses(x_mm, 'x')
+        y_pulse = self._mm_to_pulses(y_mm, 'y')
+
+        self.dxl.set_goal_position(config.DXL_IDS['x'], x_pulse)
+        self.dxl.set_goal_position(config.DXL_IDS['y'], y_pulse)
+
+        # --- 停止検知用の変数 ---
+        last_check_time = time.time()
+        # 最初のチェックで引っかからないよう、初期値は現在地から遠い値にしておく
+        last_x_mm = -99999.0
+        last_y_mm = -99999.0
+
+        while True:
+            cur_x_p = self.dxl.read_present_position(config.DXL_IDS['x'])
+            cur_y_p = self.dxl.read_present_position(config.DXL_IDS['y'])
+
+            if cur_x_p == -1 or cur_y_p == -1:
+                time.sleep(0.002)
+                continue
+
+            cur_x_mm = self._pulses_to_mm(cur_x_p, 'x')
+            cur_y_mm = self._pulses_to_mm(cur_y_p, 'y')
+
+            # 1. 閾値判定 (目的地に近づいたら次へ)
+            dist = math.hypot(x_mm - cur_x_mm, y_mm - cur_y_mm)
+            if dist <= threshold_mm:
+                break
+
+            # 2. 停止検知 (0.2秒ごとにチェック)
+            # もしモーターが動かなくなっていたら、待機し続けずに次へ進む
+            if time.time() - last_check_time > 0.2:
+                moved_dist = math.hypot(cur_x_mm - last_x_mm, cur_y_mm - last_y_mm)
+
+                # 0.2秒間で 1.0mm も動いていなければ「停止」とみなす
+                if moved_dist < 1.0:
+                    # スタック回避のためブレイク
+                    break
+
+                last_x_mm = cur_x_mm
+                last_y_mm = cur_y_mm
+                last_check_time = time.time()
+
+            time.sleep(0.002)
+
+        self.current_pos['x'] = x_mm
+        self.current_pos['y'] = y_mm
+
     def _home_single_axis(self, axis, sensor):
         """
         単軸ホーミング（バックオフを速度制御で実行）
@@ -560,8 +618,8 @@ class MotionSystem:
                 retract_amount = 500
                 self.log(f"  ステップ3: 次の移動が長いため、退避量を増やします(-{retract_amount})。")
             else:
-                # 通常時は -100 退避
-                retract_amount = 100
+                # 通常時は -200 退避．100の場合シートをちゃんと抑えないと巻き上げてしまう
+                retract_amount = 200
 
             retract_target = final_pos - retract_amount
             self.log(f"  ステップ3: 現在地({final_pos})から -{retract_amount} 退避 -> 目標: {retract_target}")

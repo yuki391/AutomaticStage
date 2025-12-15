@@ -206,6 +206,14 @@ class PageMergedPreviewExecution(tk.Frame):
         pause_frame = ttk.LabelFrame(bottom_container, text="一時停止/再開")
         pause_frame.grid(row=0, column=2, sticky="nsew", padx=5)
 
+        # ▼▼▼ 修正箇所: 自動一時停止設定を追加 ▼▼▼
+        auto_pause_f = tk.Frame(pause_frame)
+        auto_pause_f.pack(fill='x', padx=10, pady=(5, 0))
+        tk.Label(auto_pause_f, text="自動停止(点毎):", font=("Arial", 9)).pack(side='left')
+        self.entry_auto_pause = tk.Entry(auto_pause_f, width=5, justify='center')
+        self.entry_auto_pause.pack(side='left', padx=5)
+        # ▲▲▲ 修正箇所ここまで ▲▲▲
+
         tk.Button(pause_frame, text="一時停止\n(Pause)", bg="yellow", width=10, height=2,
                   command=self.pause_job).pack(pady=5, padx=10, fill='x')
 
@@ -525,24 +533,24 @@ class PageMergedPreviewExecution(tk.Frame):
         try:
             self.add_log("--- 詳細プレビュー (経路トレース) 開始 ---")
 
-            if not run_preview(self.motion, points, (0, 0), self.active_preset):
-                self.add_log("範囲チェックエラーのため停止します。")
-                return
+            # ▼▼▼ 修正: 詳細プレビュー時は四隅確認(run_preview)を行わない ▼▼▼
+            # if not run_preview(self.motion, points, (0, 0), self.active_preset):
+            #    self.add_log("範囲チェックエラーのため停止します。")
+            #    return
+            # ▲▲▲ 修正ここまで ▲▲▲
 
             if self.stop_event.is_set(): return
 
             self.add_log("移動を開始します...")
             self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
 
-            # ★変更: プレビュー用の高速設定 (元のプリセットをコピーして速度だけ上書き)
+            # プレビュー用の高速設定
             preview_preset = self.active_preset.copy()
             preview_preset['velocity_xy'] = 300
             preview_preset['acceleration_xy'] = 100
 
-            current_x = self.motion.current_pos.get('x', 0.0)
-            current_y = self.motion.current_pos.get('y', 0.0)
-
             for i, p in enumerate(points):
+                # 一時停止/中断チェック (省略なし)
                 if not self.pause_event.is_set():
                     self.add_log(f"[{i + 1}/{len(points)}] 一時停止中...")
                     while not self.pause_event.is_set():
@@ -557,23 +565,19 @@ class PageMergedPreviewExecution(tk.Frame):
                 target_x = float(p['x'])
                 target_y = float(p['y'])
 
-                # 5mm以上離れている場合は厳密停止モード、それ以外は通常移動
-                dist = math.hypot(target_x - current_x, target_y - current_y)
-                is_precise = (dist >= 5.0)
-
-                # プレビューなのでログは少なめに
-                if i % 10 == 0 or is_precise:
+                if i % 10 == 0:
                     self.add_log(f"Trace ({i + 1}/{len(points)}): {target_x:.1f}, {target_y:.1f}")
 
-                # ★変更: 高速プレビュー用プリセットで移動
-                self.motion.move_xy_abs(target_x, target_y, preview_preset, precise_mode=is_precise)
+                # ▼▼▼ 修正: 連続移動処理 (最後だけはしっかり止める) ▼▼▼
+                is_last_point = (i == len(points) - 1)
 
-                # ★変更: 待ち時間を短縮 (0.2 -> 0.05)
-                if is_precise:
-                    time.sleep(0.05)
-
-                current_x = target_x
-                current_y = target_y
+                if is_last_point:
+                    # 最後の点は正確に止まる
+                    self.motion.move_xy_abs(target_x, target_y, preview_preset, precise_mode=True)
+                else:
+                    # 途中の点は 3.0mm 手前で次の命令へ移る
+                    # (停止検知機能がついたので、もし止まっても自動で次へ進みます)
+                    self.motion.move_xy_continuous(target_x, target_y, preview_preset, threshold_mm=3.0)
 
             self.add_log("--- 詳細プレビュー完了 ---")
             self.motion.return_to_origin()
@@ -594,6 +598,19 @@ class PageMergedPreviewExecution(tk.Frame):
             messagebox.showwarning("警告", "溶着データがありません。")
             return
 
+        # ▼▼▼ 修正箇所: 自動停止間隔の取得 ▼▼▼
+        auto_pause_interval = 0
+        raw_val = self.entry_auto_pause.get().strip()
+        if raw_val:
+            try:
+                auto_pause_interval = int(raw_val)
+                if auto_pause_interval < 0:
+                    auto_pause_interval = 0
+            except ValueError:
+                messagebox.showwarning("入力エラー", "自動停止の間隔は整数を入力してください。\n(無効な場合は0扱いで実行します)")
+                return
+        # ▲▲▲ 修正箇所ここまで ▲▲▲
+
         if not messagebox.askyesno("最終確認",
                                    "溶着を開始します。\nエリアシフトは済んでいますか？\n\n「はい」を押すと直ちに移動を開始します。"):
             return
@@ -602,11 +619,12 @@ class PageMergedPreviewExecution(tk.Frame):
         self.pause_event.set()
         self.status_label.config(text="実行中", fg="black")
 
-        t = threading.Thread(target=self._welding_flow_absolute_thread, args=(points,))
+        # 引数に auto_pause_interval を追加
+        t = threading.Thread(target=self._welding_flow_absolute_thread, args=(points, auto_pause_interval))
         t.daemon = True
         t.start()
 
-    def _welding_flow_absolute_thread(self, points):
+    def _welding_flow_absolute_thread(self, points, auto_pause_interval=0):
         try:
             self.add_log("--- 溶着プロセス開始 ---")
 
@@ -619,6 +637,8 @@ class PageMergedPreviewExecution(tk.Frame):
                 return
 
             self.add_log(f"--- 溶着ジョブ実行 ({len(points)}点) ---")
+            if auto_pause_interval > 0:
+                self.add_log(f"※ {auto_pause_interval}点ごとに自動で一時停止します。")
 
             self.motion.move_z_abs_pulse(config.SAFE_Z_PULSE)
 
@@ -689,6 +709,13 @@ class PageMergedPreviewExecution(tk.Frame):
                 # 5. 実行 (コピーしたプリセットを渡す)
                 self.motion.execute_welding_press(self.welder, exec_preset)
 
+                # ▼▼▼ 自動一時停止チェック ▼▼▼
+                if auto_pause_interval > 0 and (i + 1) < len(points) and (i + 1) % auto_pause_interval == 0:
+                    self.add_log(f"--- 自動停止: {i + 1}点完了。冷却のため一時停止します ---")
+                    # 次のループ開始時に止まるように pause_event をクリアする
+                    self.pause_job()
+                # ▲▲▲ 自動一時停止チェック ▲▲▲
+
                 # ▲▲▲▲▲▲▲▲▲▲ 修正ここまで ▲▲▲▲▲▲▲▲▲▲
 
             if not self.stop_event.is_set():
@@ -697,13 +724,6 @@ class PageMergedPreviewExecution(tk.Frame):
                 self.status_label.config(text="待機中", fg="black")
             else:
                 self.add_log("緊急停止状態のため、原点復帰をスキップします。")
-
-        except Exception as e:
-            traceback.print_exc()
-            err_msg = f"エラー発生: {e}\n{traceback.format_exc()}"
-            self.add_log(err_msg)
-            messagebox.showerror("実行時エラー", str(e))
-            self.status_label.config(text="エラー停止", fg="red")
 
         except Exception as e:
             traceback.print_exc()

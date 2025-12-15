@@ -17,11 +17,11 @@
 
 WELDING_PRESETS = {
     "下記から選択": {#config.pyでこの名前使ってるからこの名前は変えないで．
-        'weld_pitch': 10.0,
+        'weld_pitch': 2.0,
         'velocity_xy': 300,
         'acceleration_xy': 50,
         'weld_current': 5,
-        'gentle_current': 8,
+        'gentle_current': 6,
         'weld_time': 1,
         #基本的なパラメーター．amptdは80
     },
