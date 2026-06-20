@@ -230,58 +230,87 @@ class MotionSystem:
 
     def _home_single_axis(self, axis, sensor):
         """
-        単軸ホーミング（バックオフを速度制御で実行）
+        単軸ホーミング（事前離脱動作とバックオフを組み込んだバージョン）
         手順:
-          1) 高速速度制御で接近し、センサー検知まで待つ（従来通り）
-          2) センサー検知後、速度制御で「離れる方向に一定速度」を出し、
-             read_present_position を監視して所要パルス分移動したら停止する（滑らかな動作）
-          3) 低速再接近で原点を決定（従来通り）
+          0) 事前離脱: 現在地から逆方向へ10mm移動（位置制御で正確に停止）
+          1) 初回アプローチ: 高速速度制御で接近し、センサー検知まで待つ
+          2) バックオフ: センサー検知後、離れる方向に速度制御で一定量移動
+          3) 原点確定: 低速再接近で原点を決定
         """
         dxl_id = config.DXL_IDS[axis]
         homing_sign = config.HOMING_VELOCITY_SIGN.get(axis, -1)
         fast_speed = int(config.HOMING_SPEED_FAST * homing_sign)
         slow_speed = int(config.HOMING_SPEED_SLOW * homing_sign)
 
-        # --- 初回アプローチ（元の速度制御） ---
-        self.log(f"{axis.upper()}軸 原点探索 (高速)... (homing_sign={homing_sign}, fast_speed={fast_speed})")
+        # ==========================================================================
+        # 【ステップ0】事前離脱動作 (位置制御で正確に10mm移動)
+        # ==========================================================================
+        self.log(f"{axis.upper()}軸 事前離脱動作開始 (位置制御で逆方向に10mm移動)...")
+        pre_start_pos = self.dxl.read_present_position(dxl_id)
+
+        if pre_start_pos != -1:
+            pulse_per_mm = self.pulses_per_mm_x if axis == 'x' else self.pulses_per_mm_y
+            pre_backoff_mm = 10.0  # 10mm(1センチ)移動
+
+            # 離れる方向は -homing_sign
+            desired_pre_pulses = int(pre_backoff_mm * pulse_per_mm * -homing_sign)
+            target_pulse = pre_start_pos + desired_pre_pulses
+
+            # 位置制御モード(4)を使用
+            self.dxl.set_operating_mode(dxl_id, 4)
+            # 原点探索時と同じ速度・加速度プロファイルを適用
+            self.dxl.set_profile(dxl_id, int(config.HOMING_SPEED_FAST), int(config.HOMING_APPROACH_ACCELERATION))
+
+            # 目標位置へ移動命令
+            self.dxl.set_goal_position(dxl_id, target_pulse)
+
+            # 動き出すまで少し待つ
+            time.sleep(0.1)
+
+            # モーターが停止するまで待機
+            while self.dxl.is_moving(dxl_id):
+                time.sleep(0.01)
+
+            self.log(f"{axis.upper()}軸 事前離脱動作完了。")
+            time.sleep(0.1)
+
+        # ==========================================================================
+        # 【ステップ1】初回アプローチ（高速でセンサーを探索）
+        # ==========================================================================
+        self.log(f"{axis.upper()}軸 原点探索 (高速)...")
         self.dxl.set_operating_mode(dxl_id, 1)  # 速度制御モード
         self.dxl.set_profile(dxl_id, 0, int(self.homing_approach_accel))
         self.dxl.set_goal_velocity(dxl_id, fast_speed)
+
         while not sensor.is_triggered():
             time.sleep(0.005)
+
         # 停止
         self.dxl.set_goal_velocity(dxl_id, 0)
         self.log(f"{axis.upper()}軸 センサー検知。")
         time.sleep(0.3)
-        # --- ここまでが初回通過前の動作（元に戻した） ---
 
-        # --- バックオフ：速度制御で離れる方向に一定速度を出す ---
+        # ==========================================================================
+        # 【ステップ2】バックオフ（センサーから離れる）
+        # ==========================================================================
         start_pos = self.dxl.read_present_position(dxl_id)
         if start_pos == -1:
             self.log("  !! 警告: 現在位置の読み取りに失敗しました。バックオフをスキップします。")
         else:
             pulse_per_mm = self.pulses_per_mm_x if axis == 'x' else self.pulses_per_mm_y
             backoff_mm = float(self.homing_backoff_mm)
-            # 以前の実装と同じ意味でのパルス計算（離れる方向は -homing_sign）
             desired_backoff_pulses = int(backoff_mm * pulse_per_mm * -homing_sign)
-            self.log(f"バックオフ開始: start_pos={start_pos}, backoff_mm={backoff_mm}, desired_backoff_pulses={desired_backoff_pulses}")
 
-            # 速度値は homing_backoff_speed を使い、方向は -homing_sign
             velocity_value = int(self.homing_backoff_speed * (-homing_sign))
-            # safety: clamp small non-zero
             if velocity_value == 0:
                 velocity_value = int(1 * (-homing_sign))
-            self.log(f"  set_goal_velocity for backoff: {velocity_value} (unit: device velocity)")
 
-            # 切替：速度制御モード（既に1だが明示）
             self.dxl.set_operating_mode(dxl_id, 1)
             self.dxl.set_profile(dxl_id, 0, int(self.homing_backoff_accel))
             self.dxl.set_goal_velocity(dxl_id, velocity_value)
 
-            # 監視：所要パルスだけ移動したら停止
             t0 = time.time()
             timeout = self._backoff_timeout
-            target_reached = False
 
             while True:
                 now = time.time()
@@ -290,32 +319,27 @@ class MotionSystem:
                     break
                 pos = self.dxl.read_present_position(dxl_id)
                 if pos == -1:
-                    self.log("  !! read_present_position が -1 を返しました。停止します。")
                     break
                 moved = pos - start_pos
-                # desired_backoff_pulses には方向が含まれる（負または正）
                 if (desired_backoff_pulses >= 0 and moved >= desired_backoff_pulses) or \
-                   (desired_backoff_pulses <= 0 and moved <= desired_backoff_pulses):
-                    target_reached = True
-                    self.log(f"  バックオフ目標到達: start={start_pos}, now={pos}, moved={moved}")
+                        (desired_backoff_pulses <= 0 and moved <= desired_backoff_pulses):
                     break
-                # 短いインターバルでポーリング（0.01〜0.05 秒）
                 time.sleep(0.02)
 
-            # 停止指令（速度0）
             self.dxl.set_goal_velocity(dxl_id, 0)
-            # 少し待って確定
             time.sleep(0.05)
-            final_pos = self.dxl.read_present_position(dxl_id)
-            self.log(f"  バックオフ完了後の位置 read={final_pos} (target_reached={target_reached})")
 
-        # --- 低速で再接近（元の実装） ---
+        # ==========================================================================
+        # 【ステップ3】低速で再接近し、原点確定
+        # ==========================================================================
         self.log(f"{axis.upper()}軸 原点確定 (低速)...")
         self.dxl.set_operating_mode(dxl_id, 1)
         self.dxl.set_profile(dxl_id, 0, int(self.homing_slow_accel))
         self.dxl.set_goal_velocity(dxl_id, slow_speed)
+
         while not sensor.is_triggered():
             time.sleep(0.005)
+
         self.dxl.set_goal_velocity(dxl_id, 0)
         final_pos = self.dxl.read_present_position(dxl_id)
         self.log(f"{axis.upper()}軸 原点確定。絶対パルス位置: {final_pos}")

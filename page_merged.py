@@ -120,7 +120,7 @@ class PageMergedPreviewExecution(tk.Frame):
         step_f.pack(pady=5)
         tk.Label(step_f, text="移動距離(mm):").pack(side='left')
         self.step_entries['x'] = tk.Entry(step_f, width=5, justify='center')
-        self.step_entries['x'].insert(0, "1.0")
+        self.step_entries['x'].insert(0, "10")
         self.step_entries['x'].pack(side='left')
         self.step_entries['y'] = self.step_entries['x']
 

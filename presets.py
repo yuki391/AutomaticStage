@@ -21,35 +21,37 @@ WELDING_PRESETS = {
         'velocity_xy': 300,
         'acceleration_xy': 50,
         'weld_current': 5,
-        'gentle_current': 6,
+        'gentle_current': 4,
         'weld_time': 1,
         #基本的なパラメーター．amptdは80
     },
 
     "ポリウレタン(0.6+0.3mm)": {
         'weld_pitch': 2.0,#点の間隔
-        'velocity_xy': 150,
-        'acceleration_xy':15,
-        'weld_current': 120,#押し付け力
-        'gentle_current': 10,
-        'weld_time': 1.3,#秒数
+        'velocity_xy': 300,
+        'acceleration_xy':50,
+        'weld_current': 10,#押し付け力
+        'gentle_current': 7,
+        'weld_time': 1.1,#秒数
         #amptdは80
     },
-    "test2": {
+    "ポリウレタン(0.3+0.3mm)": {
         'weld_pitch': 2.0,
-        'velocity_xy': 10,
-        'acceleration_xy': 150,
-        'weld_current': 100,
-        'gentle_current': 200,
-        'weld_time': 2.0,
-    },
-    "test1": {
-        'weld_pitch': 2.0,
-        'velocity_xy': 150,
-        'acceleration_xy': 20,
-        'weld_current': 50,
-        'gentle_current': 35,
+        'velocity_xy': 300,
+        'acceleration_xy': 50,
+        'weld_current': 5,
+        'gentle_current': 4,
         'weld_time': 1,
+        #基本的なパラメーター．amptdは75
+    },
+    "薄い素材": {
+        'weld_pitch': 1.6,
+        'velocity_xy': 300,
+        'acceleration_xy': 50,
+        'weld_current': 5,
+        'gentle_current': 4,
+        'weld_time': 0.4,
+        #基本的なパラメーター．amptdは75
     },
     "ポリウレタン_強め(0.3+0.3mm)": {
         'weld_pitch': 1.8,#点の間隔
@@ -60,7 +62,7 @@ WELDING_PRESETS = {
         'weld_time': 1.4,#秒数
         #amptdは80
     },
-    "ポリウレタン(0.3+0.3mm)": {
+    "仮": {
         'weld_pitch': 2.0,#点の間隔
         'velocity_xy': 300,
         'acceleration_xy':15,
